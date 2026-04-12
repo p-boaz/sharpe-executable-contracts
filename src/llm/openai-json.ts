@@ -61,7 +61,7 @@ export async function callOpenAIJson<T>(options: OpenAIJsonCallOptions): Promise
           type: "json_schema",
           name: "structured_output",
           schema: options.schema,
-          strict: true,
+          strict: false,
         },
       },
     }),

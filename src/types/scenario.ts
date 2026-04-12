@@ -11,12 +11,23 @@ export interface ScenarioEvent {
   date: string;
   type: ScenarioEventType;
   amount?: number;
-  metadata?: Record<string, string | number | boolean>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Scenario {
   scenarioId: string;
+  archetype?: string;
+  label?: string;
   assumptions: string[];
-  initialState: Record<string, string | number | boolean>;
+  initialState: Record<string, unknown>;
   events: ScenarioEvent[];
+  metadata?: {
+    generation: {
+      llmRequested: boolean;
+      llmUsed: boolean;
+      mode: "llm" | "deterministic_fallback" | "llm_validated_fallback";
+      archetype?: string;
+      validationNote?: string;
+    };
+  };
 }

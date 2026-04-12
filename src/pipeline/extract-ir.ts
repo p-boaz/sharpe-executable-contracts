@@ -1,7 +1,15 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { callOpenAIJson } from "../llm/openai-json.js";
-import type { Clause, ContractIR, Definition, SourceSpan } from "../types/ir.js";
+import type {
+  BoolExpr,
+  Clause,
+  ContractIR,
+  Definition,
+  Expr,
+  SourceSpan,
+  TemporalRule,
+} from "../types/ir.js";
 
 export interface ExtractIrOptions {
   contractText: string;
@@ -11,6 +19,7 @@ export interface ExtractIrOptions {
 
 const extractorVersion = "contract-ir-v1";
 type ContractMetadata = ContractIR["metadata"];
+type ExtractionMode = ContractMetadata["extraction"]["mode"];
 
 const IrTopSchema = z.object({
   contractId: z.string().min(1),
@@ -255,13 +264,24 @@ function extractionHashFor(text: string, sourceFile: string): string {
     .digest("hex");
 }
 
-function buildMetadata(text: string, sourceFile: string, clauses: Clause[]): ContractMetadata {
+function buildMetadata(
+  text: string,
+  sourceFile: string,
+  clauses: Clause[],
+  extractionMode: ExtractionMode,
+): ContractMetadata {
+  const llmUsed = extractionMode === "llm";
   return {
     sourceFile,
     extractionHash: extractionHashFor(text, sourceFile),
     extractorVersion,
     clauseCount: clauses.length,
     modeledClauseCount: clauses.filter((clause) => clause.modeled).length,
+    extraction: {
+      llmRequested: llmUsed,
+      llmUsed,
+      mode: extractionMode,
+    },
   };
 }
 
@@ -693,7 +713,7 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
     ].filter((party, index, arr) => arr.findIndex((p) => p.id === party.id) === index),
     definitions: extractDefinitions(text),
     clauses: clausesWithSpans,
-    metadata: buildMetadata(text, sourceFile, clausesWithSpans),
+    metadata: buildMetadata(text, sourceFile, clausesWithSpans, "heuristic_fallback"),
   };
 }
 
@@ -707,9 +727,118 @@ function normalizeSourceSpan(raw: unknown): SourceSpan | undefined {
   return { start: start as number, end: end as number };
 }
 
+function normalizeTemporalRule(raw: unknown): TemporalRule {
+  if (raw && typeof raw === "object") {
+    const candidate = raw as Record<string, unknown>;
+    const type = candidate.type;
+    const value = candidate.value;
+    const isValidType =
+      type === "calendar_days" || type === "business_days" || type === "on_date";
+    const isValidValue = typeof value === "string" || typeof value === "number";
+    if (isValidType && isValidValue) {
+      const anchor = candidate.anchor;
+      return {
+        type,
+        value,
+        ...(typeof anchor === "string" && anchor ? { anchor } : {}),
+      };
+    }
+  }
+  return { type: "on_date", value: "see_source_text" };
+}
+
+function normalizeExpr(raw: unknown, depth = 0): Expr {
+  if (!raw || typeof raw !== "object" || depth > 4) {
+    return { op: "const", value: 0 };
+  }
+  const candidate = raw as Record<string, unknown>;
+  const op = candidate.op;
+  if (
+    op !== "const" &&
+    op !== "var" &&
+    op !== "add" &&
+    op !== "sub" &&
+    op !== "mul" &&
+    op !== "div" &&
+    op !== "max" &&
+    op !== "min"
+  ) {
+    return { op: "const", value: 0 };
+  }
+
+  if (op === "const") {
+    const value = candidate.value;
+    return {
+      op: "const",
+      value: typeof value === "number" && Number.isFinite(value) ? value : 0,
+    };
+  }
+  if (op === "var") {
+    return {
+      op: "var",
+      name: typeof candidate.name === "string" && candidate.name ? candidate.name : "var",
+    };
+  }
+
+  const args = Array.isArray(candidate.args)
+    ? candidate.args.map((item) => normalizeExpr(item, depth + 1))
+    : [];
+  return {
+    op,
+    args,
+  };
+}
+
+function normalizeBoolExpr(raw: unknown, depth = 0): BoolExpr | undefined {
+  if (!raw || typeof raw !== "object" || depth > 4) return undefined;
+  const candidate = raw as Record<string, unknown>;
+  const op = candidate.op;
+  if (
+    op !== "eq" &&
+    op !== "neq" &&
+    op !== "gt" &&
+    op !== "gte" &&
+    op !== "lt" &&
+    op !== "lte" &&
+    op !== "and" &&
+    op !== "or"
+  ) {
+    return undefined;
+  }
+
+  if (op === "and" || op === "or") {
+    const args = Array.isArray(candidate.args)
+      ? candidate.args
+          .map((item) => normalizeBoolExpr(item, depth + 1))
+          .filter((item): item is BoolExpr => item != null)
+      : [];
+    if (args.length === 0) return undefined;
+    return { op, args };
+  }
+
+  const leftRaw = candidate.left;
+  const rightRaw = candidate.right;
+  const left =
+    typeof leftRaw === "string" || typeof leftRaw === "number"
+      ? leftRaw
+      : normalizeBoolExpr(leftRaw, depth + 1);
+  const right =
+    typeof rightRaw === "string" || typeof rightRaw === "number"
+      ? rightRaw
+      : normalizeBoolExpr(rightRaw, depth + 1);
+
+  if (left == null || right == null) return undefined;
+  return {
+    op,
+    left,
+    right,
+  };
+}
+
 function normalizeClause(rawClause: Record<string, unknown>): Clause {
   const kind = rawClause.kind;
   const sourceSpan = normalizeSourceSpan(rawClause.sourceSpan);
+  const condition = normalizeBoolExpr(rawClause.condition);
   if (kind === "obligation") {
     return {
       id: String(rawClause.id),
@@ -717,9 +846,9 @@ function normalizeClause(rawClause: Record<string, unknown>): Clause {
       kind: "obligation",
       actor: String(rawClause.actor || "party"),
       action: String(rawClause.action || "Perform obligation"),
-      due: rawClause.due as never,
-      condition: rawClause.condition as never,
-      curePeriod: rawClause.curePeriod as never,
+      due: normalizeTemporalRule(rawClause.due),
+      ...(condition ? { condition } : {}),
+      ...(rawClause.curePeriod ? { curePeriod: normalizeTemporalRule(rawClause.curePeriod) } : {}),
       sourceText: String(rawClause.sourceText),
       ...(sourceSpan ? { sourceSpan } : {}),
       modeled: Boolean(rawClause.modeled),
@@ -732,7 +861,7 @@ function normalizeClause(rawClause: Record<string, unknown>): Clause {
       title: String(rawClause.title),
       kind: "formula",
       outputVar: String(rawClause.outputVar || "derived_value"),
-      expr: rawClause.expr as never,
+      expr: normalizeExpr(rawClause.expr),
       sourceText: String(rawClause.sourceText),
       ...(sourceSpan ? { sourceSpan } : {}),
       modeled: Boolean(rawClause.modeled),
@@ -744,9 +873,17 @@ function normalizeClause(rawClause: Record<string, unknown>): Clause {
       id: String(rawClause.id),
       title: String(rawClause.title),
       kind: "fee",
-      feeType: rawClause.feeType as never,
-      amountType: rawClause.amountType as never,
-      amountValue: Number(rawClause.amountValue || 0),
+      feeType:
+        rawClause.feeType === "late_payment" ||
+        rawClause.feeType === "over_limit" ||
+        rawClause.feeType === "returned_payment" ||
+        rawClause.feeType === "foreign_txn"
+          ? rawClause.feeType
+          : "late_payment",
+      amountType: rawClause.amountType === "percent" ? "percent" : "fixed",
+      amountValue: Number.isFinite(Number(rawClause.amountValue))
+        ? Number(rawClause.amountValue)
+        : 0,
       triggerDescription: String(rawClause.triggerDescription || ""),
       sourceText: String(rawClause.sourceText),
       ...(sourceSpan ? { sourceSpan } : {}),
@@ -781,7 +918,7 @@ function normalizeIr(raw: unknown, sourceFile: string, contractText: string): Co
     definitions: parsed.definitions,
     clauses: clausesWithSpans,
     ...(parsed.jurisdiction ? { jurisdiction: parsed.jurisdiction } : {}),
-    metadata: buildMetadata(contractText, sourceFile, clausesWithSpans),
+    metadata: buildMetadata(contractText, sourceFile, clausesWithSpans, "llm"),
   };
 }
 
@@ -803,7 +940,8 @@ export async function extractIr(options: ExtractIrOptions): Promise<ContractIR> 
     });
 
     return normalizeIr(llmResult, options.sourceFile, options.contractText);
-  } catch {
-    return heuristicFallbackIr(options.contractText, options.sourceFile);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`IR extraction failed in --use-llm mode: ${message}`);
   }
 }

@@ -92,5 +92,10 @@ export interface ContractIR {
     extractorVersion: string;
     clauseCount: number;
     modeledClauseCount: number;
+    extraction: {
+      llmRequested: boolean;
+      llmUsed: boolean;
+      mode: "llm" | "heuristic_fallback";
+    };
   };
 }

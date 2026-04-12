@@ -15,6 +15,22 @@ interface MutableObligation {
   status: "open" | "met" | "missed" | "partial";
 }
 
+function primitiveState(
+  state: Scenario["initialState"],
+): Record<string, string | number | boolean> {
+  const result: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(state)) {
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 function numberState(
   state: Scenario["initialState"],
   key: string,
@@ -83,7 +99,7 @@ function evaluateFormulaOutput(
 
 function conditionIsMet(condition: BoolExpr | undefined, scenario: Scenario): boolean {
   if (!condition) return true;
-  return evaluateBoolExpr(condition, scenario.initialState);
+  return evaluateBoolExpr(condition, primitiveState(scenario.initialState));
 }
 
 function isLeaseScenario(ir: ContractIR, scenario: Scenario): boolean {

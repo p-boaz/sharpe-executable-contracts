@@ -8,8 +8,12 @@ import { decompileIrToEnglish } from "../src/core/decompiler.js";
 import { evaluateBoolExpr } from "../src/core/eval-bool.js";
 import { evaluateExpr } from "../src/core/eval-expr.js";
 import { executeContract } from "../src/core/executor.js";
+import { archetypesFor, contractFamily } from "../src/pipeline/archetypes.js";
 import { extractIr } from "../src/pipeline/extract-ir.js";
-import { generateScenario } from "../src/pipeline/generate-scenario.js";
+import {
+  generateAllScenarios,
+  generateScenario,
+} from "../src/pipeline/generate-scenario.js";
 import { runPipeline } from "../src/pipeline/run-pipeline.js";
 
 const root = process.cwd();
@@ -59,19 +63,38 @@ test("extractor returns honest modeled/unmodeled mix on lease sample", async () 
   assert.ok(ir.clauses.every((clause) => clause.sourceSpan != null));
 });
 
-test("scenario generation is IR-responsive and explicit", async () => {
+test("scenario generation is archetype-driven and IR-responsive", async () => {
   const contractText = readFileSync(cardPath, "utf8");
   const ir = await extractIr({
     contractText,
     sourceFile: "WesTex-VISA-credit-card-agreement.md",
     useLlm: false,
   });
-  const scenario = await generateScenario({ ir, useLlm: false });
 
-  assert.equal(scenario.scenarioId, "scenario.credit-card.ir-responsive");
+  const family = contractFamily(ir);
+  assert.equal(family, "credit_card");
+  const archetypes = archetypesFor(family);
+  assert.deepEqual(
+    archetypes.map((a) => a.id),
+    ["on-time", "late-payment", "over-limit"],
+  );
+
+  const late = archetypes.find((a) => a.id === "late-payment");
+  assert.ok(late);
+  const scenario = await generateScenario({ ir, archetype: late, useLlm: false });
+  assert.equal(scenario.archetype, "late-payment");
+  assert.equal(scenario.label, "Late payment, below minimum");
   assert.equal(scenario.initialState.contractFamily, "credit_card");
-  assert.ok(Array.isArray(scenario.assumptions));
+  assert.equal(scenario.metadata?.generation.mode, "deterministic_fallback");
+  assert.equal(scenario.metadata?.generation.archetype, "late-payment");
   assert.ok(scenario.assumptions.length >= 3);
+
+  const { scenarios } = await generateAllScenarios({ ir, useLlm: false });
+  assert.equal(scenarios.length, 3);
+  assert.deepEqual(
+    scenarios.map((s) => s.archetype),
+    ["on-time", "late-payment", "over-limit"],
+  );
 });
 
 test("executor produces different outcomes for condition true vs false", () => {
@@ -109,6 +132,11 @@ test("executor produces different outcomes for condition true vs false", () => {
       extractorVersion: "test",
       clauseCount: 2,
       modeledClauseCount: 2,
+      extraction: {
+        llmRequested: false,
+        llmUsed: false,
+        mode: "heuristic_fallback" as const,
+      },
     },
   };
 
@@ -142,18 +170,48 @@ test("decompiler is deterministic for same IR", async () => {
   assert.equal(a, b);
 });
 
-test("run command writes expected artifacts", () => {
+test("run command writes contract-keyed artifacts with archetype scenarios", () => {
   const outDir = mkdtempSync(join(tmpdir(), "sharpe-test-run-"));
   try {
     execFileSync(
       "pnpm",
-      ["-s", "run", "run", "--contract", "contracts/WesTex-VISA-credit-card-agreement.md", "--out", outDir],
+      [
+        "-s",
+        "run",
+        "run",
+        "--contract",
+        "contracts/WesTex-VISA-credit-card-agreement.md",
+        "--out",
+        outDir,
+        "--no-llm",
+      ],
       { cwd: root, stdio: "pipe" },
     );
     assert.ok(existsSync(join(outDir, "ir.json")));
-    assert.ok(existsSync(join(outDir, "scenario.json")));
-    assert.ok(existsSync(join(outDir, "execution.json")));
     assert.ok(existsSync(join(outDir, "english.txt")));
+    assert.ok(existsSync(join(outDir, "meta.json")));
+    for (const archetype of ["on-time", "late-payment", "over-limit"]) {
+      assert.ok(
+        existsSync(join(outDir, "scenarios", `${archetype}.json`)),
+        `missing scenario for ${archetype}`,
+      );
+      assert.ok(
+        existsSync(join(outDir, "executions", `${archetype}.json`)),
+        `missing execution for ${archetype}`,
+      );
+    }
+
+    const meta = JSON.parse(readFileSync(join(outDir, "meta.json"), "utf8")) as {
+      contractId: string;
+      family: string;
+      scenarios: { archetype: string; breached: boolean }[];
+    };
+    assert.equal(meta.family, "credit_card");
+    assert.equal(meta.scenarios.length, 3);
+    const onTime = meta.scenarios.find((s) => s.archetype === "on-time");
+    const latePayment = meta.scenarios.find((s) => s.archetype === "late-payment");
+    assert.equal(onTime?.breached, false);
+    assert.equal(latePayment?.breached, true);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }

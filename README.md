@@ -23,6 +23,7 @@ See `contracts/SOURCES.md` for provenance.
 3. Produces scenario data (`scenario.json`) with:
    - LLM mode (`--use-llm`) when `OPENAI_API_KEY` is present (recommended path for unseen/held-out contracts).
    - deterministic fallback scenario otherwise.
+   - stage-level LLM usage metadata in `ir.json`, `scenario.json`, and `pipeline-metadata.json`.
 4. Executes contract logic on the scenario (`execution.json`).
 5. Deterministically decompiles IR back to English (`english.txt`).
 6. Verifies deterministic output (`determinism` command).
@@ -42,6 +43,7 @@ See `contracts/SOURCES.md` for provenance.
    - `out/run/scenario.json`
    - `out/run/execution.json`
    - `out/run/english.txt`
+   - `out/run/pipeline-metadata.json` (`extractIr`/`generateScenario` each report `llmUsed`)
 5. Run deterministic check:
    - `pnpm run determinism --contract contracts/WesTex-VISA-credit-card-agreement.md --out out/determinism`
 6. Verify determinism artifact:
@@ -72,6 +74,8 @@ The page reads artifacts from `../out/` via `fs/promises` in a Server Component 
 - IR metadata includes deterministic `extractionHash` derived from contract markdown + extractor version.
 - IR clauses include `sourceSpan` offsets, and regenerated English includes `[source:start-end]` markers for traceability.
 - LLM mode defaults on when `OPENAI_API_KEY` is set. Under `--use-llm`, IR and scenario are *not* asserted byte-stable across runs — that's expected, the LLM is nondeterministic; English and execution remain asserted stable because the decompiler and executor are pure functions of the IR/scenario pair.
+- CLI auto-loads `.env` from repo root before parsing args.
+- Under `--use-llm`, extraction/scenario failures are fail-fast (no silent fallback); fallback mode is explicit via missing key or `--no-llm`.
 - Without a key (or with `--no-llm`), the heuristic fallback models credit-card and lease shapes only. Other contract families degrade to honest `[UNMODELED]` clauses; the CLI prints a banner to that effect.
 - Current executor supports credit-card clauses and a minimal lease monthly-rent path.
 - A built-in test suite is available via `pnpm test`.

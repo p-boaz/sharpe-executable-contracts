@@ -39,6 +39,11 @@ const leaseIr: ContractIR = {
     extractorVersion: "test",
     clauseCount: 2,
     modeledClauseCount: 2,
+    extraction: {
+      llmRequested: false,
+      llmUsed: false,
+      mode: "heuristic_fallback",
+    },
   },
 };
 

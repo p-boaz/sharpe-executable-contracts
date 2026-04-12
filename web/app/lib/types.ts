@@ -48,9 +48,28 @@ export interface ScenarioEvent {
 }
 export interface Scenario {
   scenarioId?: string;
+  archetype?: string;
+  label?: string;
   assumptions?: string[];
   initialState?: Record<string, unknown>;
   events?: ScenarioEvent[];
+}
+
+export interface ContractMeta {
+  contractId: string;
+  title: string;
+  family: string;
+  sourceFile?: string;
+  irHash?: string;
+  englishHash?: string;
+  scenarios: {
+    archetype: string;
+    label: string;
+    scenarioId: string;
+    endingBalance: number;
+    breached: boolean;
+    breachCount: number;
+  }[];
 }
 
 export interface LedgerEntry {

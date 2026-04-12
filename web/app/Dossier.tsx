@@ -1,20 +1,29 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type {
-  IR, Scenario, RunResult, Clause, Expr, LedgerEntry, Obligation, Breach,
+  Breach,
+  Clause,
+  ContractMeta,
+  Expr,
+  IR,
+  LedgerEntry,
+  Obligation,
+  RunResult,
+  Scenario,
 } from "./lib/types";
-import type { RunSummary } from "./page";
 
 interface Props {
-  summaries: RunSummary[];
-  selected: string;
+  contracts: ContractMeta[];
+  selectedContractId: string;
+  meta: ContractMeta;
   ir: IR;
-  scenario: Scenario | null;
-  runResult: RunResult | null;
-  english: string;
   contract: string;
+  english: string;
+  scenario: Scenario | null;
+  execution: RunResult | null;
+  selectedArchetype: string | null;
 }
 
 type Link = { clauseId?: string; eventId?: string };
@@ -35,9 +44,14 @@ function fmtMoney(n: number | undefined | null, currency = "USD"): string {
 function fmtDate(d?: string): string {
   if (!d) return "";
   try {
-    const dt = new Date(d + "T00:00:00");
-    return dt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
-  } catch { return d; }
+    return new Date(d + "T00:00:00").toLocaleDateString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return d;
+  }
 }
 
 function renderExpr(e: Expr | undefined): string {
@@ -58,7 +72,8 @@ function ClauseBody({ c }: { c: Clause }) {
   if (c.kind === "formula" && c.outputVar) {
     return (
       <div>
-        computes <span className="mono">{c.outputVar}</span>{" = "}
+        computes <span className="mono">{c.outputVar}</span>
+        {" = "}
         <span className="mono">{renderExpr(c.expr)}</span>
       </div>
     );
@@ -75,7 +90,12 @@ function ClauseBody({ c }: { c: Clause }) {
     return (
       <div>
         {c.actor ?? "party"} must {c.action ?? "perform duty"}
-        {c.due?.value ? <> ({c.due?.type ?? "due"}: <span className="mono">{c.due.value}</span>)</> : null}
+        {c.due?.value ? (
+          <>
+            {" "}
+            ({c.due?.type ?? "due"}: <span className="mono">{c.due.value}</span>)
+          </>
+        ) : null}
       </div>
     );
   }
@@ -84,66 +104,33 @@ function ClauseBody({ c }: { c: Clause }) {
       <>
         <div>when {c.triggerDescription ?? "triggered"}</div>
         {c.consequences?.length ? (
-          <div style={{ marginTop: 4 }}>
-            Consequences: {c.consequences.join("; ")}
-          </div>
+          <div style={{ marginTop: 4 }}>Consequences: {c.consequences.join("; ")}</div>
         ) : null}
       </>
     );
   }
-  return <div style={{ color: "var(--muted)", fontStyle: "italic" }}>{c.title ?? ""}</div>;
-}
-
-function ScenarioCard({
-  s, selected, onSelect,
-}: {
-  s: RunSummary;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`scenario-card${selected ? " selected" : ""}`}
-      onClick={onSelect}
-      aria-pressed={selected}
-    >
-      <div className="run-id">{s.run}</div>
-      <div className="title">{s.title}</div>
-      <div className="events">
-        {s.firstEvents.length === 0 ? (
-          <span>(no events)</span>
-        ) : (
-          s.firstEvents.map((e, i) => (
-            <span key={i}>
-              {fmtDate(e.date) || "—"} · {e.type.replace(/_/g, " ")}
-            </span>
-          ))
-        )}
-        {s.eventCount > s.firstEvents.length ? (
-          <span>+ {s.eventCount - s.firstEvents.length} more</span>
-        ) : null}
-      </div>
-      <div className="foot">
-        <span className="bal">{fmtMoney(s.endingBalance)}</span>
-        {s.breached === true ? (
-          <span className="breach-badge yes">breach</span>
-        ) : s.breached === false ? (
-          <span className="breach-badge no">clean</span>
-        ) : (
-          <span className="breach-badge">—</span>
-        )}
-      </div>
-    </button>
-  );
+  return <div className="muted italic">{c.title ?? ""}</div>;
 }
 
 export default function Dossier({
-  summaries, selected, ir, scenario, runResult, english, contract,
+  contracts,
+  selectedContractId,
+  meta,
+  ir,
+  contract,
+  english,
+  scenario,
+  execution,
+  selectedArchetype,
 }: Props) {
   const router = useRouter();
   const [hover, setHover] = useState<Link>({});
   const [locked, setLocked] = useState<Link>({});
+  const [ranFor, setRanFor] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRanFor(null);
+  }, [selectedContractId, selectedArchetype]);
 
   useEffect(() => {
     const clear = () => setLocked({});
@@ -151,40 +138,45 @@ export default function Dossier({
     return () => document.removeEventListener("click", clear);
   }, []);
 
-  const linkClass = useCallback((clauseId?: string, eventId?: string) => {
-    const classes: string[] = [];
-    const matchesHover =
-      (clauseId && hover.clauseId === clauseId) ||
-      (eventId  && hover.eventId  === eventId);
-    const matchesLock =
-      (clauseId && locked.clauseId === clauseId) ||
-      (eventId  && locked.eventId  === eventId);
-    if (matchesHover) classes.push(eventId && !clauseId ? "event-hover" : "linked-hover");
-    if (matchesLock)  classes.push("locked");
-    return classes.join(" ");
-  }, [hover, locked]);
-
-  const linkHandlers = useCallback((clauseId?: string, eventId?: string) => ({
-    onMouseEnter: () => setHover({ clauseId, eventId }),
-    onMouseLeave: () => setHover({}),
-    onClick: (evt: React.MouseEvent) => {
-      evt.stopPropagation();
-      setLocked(prev =>
-        prev.clauseId === clauseId && prev.eventId === eventId
-          ? {}
-          : { clauseId, eventId }
-      );
+  const linkClass = useCallback(
+    (clauseId?: string, eventId?: string) => {
+      const classes: string[] = [];
+      const matchesHover =
+        (clauseId && hover.clauseId === clauseId) ||
+        (eventId && hover.eventId === eventId);
+      const matchesLock =
+        (clauseId && locked.clauseId === clauseId) ||
+        (eventId && locked.eventId === eventId);
+      if (matchesHover) classes.push(eventId && !clauseId ? "event-hover" : "linked-hover");
+      if (matchesLock) classes.push("locked");
+      return classes.join(" ");
     },
-  }), []);
+    [hover, locked],
+  );
 
-  const summary = runResult?.summary ?? {};
+  const linkHandlers = useCallback(
+    (clauseId?: string, eventId?: string) => ({
+      onMouseEnter: () => setHover({ clauseId, eventId }),
+      onMouseLeave: () => setHover({}),
+      onClick: (evt: React.MouseEvent) => {
+        evt.stopPropagation();
+        setLocked((prev) =>
+          prev.clauseId === clauseId && prev.eventId === eventId
+            ? {}
+            : { clauseId, eventId },
+        );
+      },
+    }),
+    [],
+  );
+
   const currency = ir.currency ?? "USD";
+  const summary = execution?.summary ?? {};
+  const runResultsVisible = ranFor === selectedArchetype && !!execution;
 
   const englishBlocks = useMemo(() => {
     return english.split("\n").map((raw, i) => {
-      if (!raw.trim()) {
-        return <span key={i} style={{ display: "block", height: 8 }} />;
-      }
+      if (!raw.trim()) return <span key={i} style={{ display: "block", height: 8 }} />;
       const m = raw.match(/^\s*-\s+(clause\.[a-z_.]+):\s*(.*)$/i);
       if (m) {
         const cid = m[1];
@@ -195,21 +187,45 @@ export default function Dossier({
             {...linkHandlers(cid)}
           >
             <span className="marker">§</span>
-            <span className="cid">{cid}</span>{" — "}{m[2]}
+            <span className="cid">{cid}</span>
+            {" — "}
+            {m[2]}
           </span>
         );
       }
-      const headMatch = /^(Parties:|Definitions:|Executable Clauses:|Modeled coverage.*)$/.exec(raw.trim());
+      const headMatch = /^(Parties:|Definitions:|Executable Clauses:|Modeled coverage.*)$/.exec(
+        raw.trim(),
+      );
       if (headMatch) {
-        return <span key={i} className="line head">{raw.trim()}</span>;
+        return (
+          <span key={i} className="line head">
+            {raw.trim()}
+          </span>
+        );
       }
       const isMeta = /^(Contract|Contract ID|Currency)/.test(raw);
-      return <span key={i} className={`line${isMeta ? " meta" : ""}`}>{raw}</span>;
+      return (
+        <span key={i} className={`line${isMeta ? " meta" : ""}`}>
+          {raw}
+        </span>
+      );
     });
   }, [english, linkClass, linkHandlers]);
 
-  const selectScenario = (run: string) => {
-    if (run !== selected) router.push(`/?run=${encodeURIComponent(run)}`);
+  const selectContract = (contractId: string) => {
+    if (contractId !== selectedContractId) {
+      router.push(`/?contract=${encodeURIComponent(contractId)}`);
+    }
+  };
+
+  const selectScenario = (archetype: string) => {
+    router.push(
+      `/?contract=${encodeURIComponent(selectedContractId)}&scenario=${encodeURIComponent(archetype)}`,
+    );
+  };
+
+  const runNow = () => {
+    if (selectedArchetype) setRanFor(selectedArchetype);
   };
 
   return (
@@ -217,21 +233,44 @@ export default function Dossier({
       <header className="topbar">
         <div>
           <div className="brand">Executable Contracts · pipeline viewer</div>
-          <h1>{ir.title ?? "Untitled Contract"}</h1>
+          <div className="contract-picker">
+            <label htmlFor="contract-select">Contract</label>
+            <select
+              id="contract-select"
+              value={selectedContractId}
+              onChange={(e) => selectContract(e.target.value)}
+            >
+              {contracts.map((c) => (
+                <option key={c.contractId} value={c.contractId}>
+                  {c.title} ({c.family})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="meta">
-          <div>run: <strong>{selected}</strong></div>
+          <div>id: <strong>{meta.contractId}</strong></div>
           <div>
-            {ir.parties?.map(p => p.name).slice(0, 2).join(" ↔ ") || "—"}
-            {" · "}{currency}
-            {ir.metadata ? <> · {ir.metadata.modeledClauseCount ?? 0}/{ir.metadata.clauseCount ?? 0} modeled</> : null}
+            {ir.parties?.map((p) => p.name).slice(0, 2).join(" ↔ ") || "—"}
+            {" · "}
+            {currency}
+            {ir.metadata ? (
+              <>
+                {" "}
+                · {ir.metadata.modeledClauseCount ?? 0}/{ir.metadata.clauseCount ?? 0} modeled
+              </>
+            ) : null}
           </div>
         </div>
       </header>
 
       <section className="zone">
         <div className="zone-label">
-          Inputs <span className="hint">— the round-trip anchors; identical regardless of scenario</span>
+          Step 1 · Contract → IR + English
+          <span className="hint">
+            {" "}— the runtime parses the markdown on the left and deterministically regenerates English
+            from the IR on the right
+          </span>
         </div>
         <div className="inputs">
           <div className="input-panel">
@@ -239,7 +278,7 @@ export default function Dossier({
               <span className="label">contract.md</span>
               <span>markdown input</span>
             </div>
-            <pre className="body">{contract || "(contract.md not found for this run)"}</pre>
+            <pre className="body">{contract || "(contract.md not found)"}</pre>
           </div>
           <div className="input-panel">
             <div className="head">
@@ -249,57 +288,143 @@ export default function Dossier({
             <div className="english-body">{englishBlocks}</div>
           </div>
         </div>
+
+        <details className="ir-drawer">
+          <summary>
+            <strong>Show intermediate representation</strong>
+            {" — "}
+            {(ir.clauses ?? []).length} clauses drive every scenario below
+          </summary>
+          <div className="ir-body">
+            {(ir.clauses ?? []).map((c) => (
+              <div
+                key={c.id}
+                className={`article ${linkClass(c.id)}`}
+                {...linkHandlers(c.id)}
+              >
+                <div className="art-head">
+                  <span className={`art-kind ${c.kind}`}>{c.kind}</span>
+                  <span className="art-id">{c.id}</span>
+                </div>
+                <div className="art-title">{c.title ?? c.id}</div>
+                <div className="art-body">
+                  <ClauseBody c={c} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
       </section>
 
       <section className="zone">
         <div className="zone-label">
-          Scenario <span className="hint">— the variable input; pick one to see how the IR reacts</span>
+          Step 2 · Pick a scenario for this contract
+          <span className="hint">
+            {" "}— scenarios are generated for the <strong>{meta.family}</strong> family; each exercises
+            a distinct archetype
+          </span>
         </div>
         <div className="scenarios">
-          {summaries.map(s => (
-            <ScenarioCard
-              key={s.run}
-              s={s}
-              selected={s.run === selected}
-              onSelect={() => selectScenario(s.run)}
-            />
-          ))}
+          {meta.scenarios.map((s) => {
+            const isSelected = s.archetype === selectedArchetype;
+            return (
+              <button
+                key={s.archetype}
+                type="button"
+                className={`scenario-card${isSelected ? " selected" : ""}`}
+                onClick={() => selectScenario(s.archetype)}
+                aria-pressed={isSelected}
+              >
+                <div className="run-id">{s.archetype}</div>
+                <div className="title">{s.label}</div>
+                <div className="events">
+                  <span>{s.scenarioId}</span>
+                </div>
+                <div className="foot">
+                  <span className="bal">{fmtMoney(s.endingBalance, currency)}</span>
+                  {s.breached ? (
+                    <span className="breach-badge yes">breach</span>
+                  ) : (
+                    <span className="breach-badge no">clean</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </section>
 
       <section className="zone">
         <div className="zone-label">
-          Execution <span className="hint">— what the IR computes for the selected scenario</span>
-        </div>
-        <div className="exec-ribbon">
-          <div className="exec-cell">
-            <div className="k">Ending balance</div>
-            <div className="v">{fmtMoney(summary.endingBalance, currency)}</div>
-          </div>
-          <div className="exec-cell">
-            <div className="k">Total paid</div>
-            <div className="v">{fmtMoney(summary.totalPaid, currency)}</div>
-          </div>
-          <div className="exec-cell">
-            <div className="k">Interest charged</div>
-            <div className="v">{fmtMoney(summary.totalInterestCharged, currency)}</div>
-          </div>
-          <div className="exec-cell">
-            <div className="k">Fees charged</div>
-            <div className="v">{fmtMoney(summary.totalFeesCharged, currency)}</div>
-          </div>
-          <div className="exec-cell">
-            <div className="k">Breach</div>
-            <div className={
-              "v" + (summary.breached === true ? " breach-yes" : summary.breached === false ? " breach-no" : "")
-            }>
-              {summary.breached === true ? "yes" : summary.breached === false ? "none" : "—"}
-            </div>
-          </div>
+          Step 3 · Run the contract
+          <span className="hint">
+            {" "}— apply the IR to the selected scenario; results are computed by the runtime (no LLM)
+          </span>
         </div>
 
-        {runResult ? (
+        {!runResultsVisible ? (
+          <div className="execute-prompt">
+            <button
+              type="button"
+              className="execute-button"
+              onClick={runNow}
+              disabled={!selectedArchetype || !execution}
+            >
+              ▶ Run{" "}
+              <span className="mono">{selectedArchetype ?? ""}</span>{" "}
+              against <span className="mono">{meta.contractId}</span>
+            </button>
+            <div className="hint" style={{ marginTop: 8 }}>
+              {scenario ? (
+                <>
+                  Will replay {scenario.events?.length ?? 0} events and{" "}
+                  {scenario.assumptions?.length ?? 0} assumptions through the runtime.
+                </>
+              ) : (
+                <>Select a scenario above to enable this step.</>
+              )}
+            </div>
+          </div>
+        ) : (
           <>
+            <div className="exec-ribbon">
+              <div className="exec-cell">
+                <div className="k">Ending balance</div>
+                <div className="v">{fmtMoney(summary.endingBalance, currency)}</div>
+              </div>
+              <div className="exec-cell">
+                <div className="k">Total paid</div>
+                <div className="v">{fmtMoney(summary.totalPaid, currency)}</div>
+              </div>
+              <div className="exec-cell">
+                <div className="k">Interest charged</div>
+                <div className="v">{fmtMoney(summary.totalInterestCharged, currency)}</div>
+              </div>
+              <div className="exec-cell">
+                <div className="k">Fees charged</div>
+                <div className="v">{fmtMoney(summary.totalFeesCharged, currency)}</div>
+              </div>
+              <div className="exec-cell">
+                <div className="k">Breach</div>
+                <div
+                  className={
+                    "v" +
+                    (summary.breached === true
+                      ? " breach-yes"
+                      : summary.breached === false
+                        ? " breach-no"
+                        : "")
+                  }
+                >
+                  {summary.breached === true
+                    ? "yes"
+                    : summary.breached === false
+                      ? "none"
+                      : "—"}
+                </div>
+              </div>
+            </div>
+
             <div className="ledger">
               <div className="led-head">
                 <div>Date</div>
@@ -308,7 +433,7 @@ export default function Dossier({
                 <div className="r">Balance</div>
               </div>
               <div>
-                {(runResult.ledger ?? []).map((ent: LedgerEntry) => {
+                {(execution?.ledger ?? []).map((ent: LedgerEntry) => {
                   const evMatch = /(evt-\d+)/.exec(ent.id ?? "");
                   const eventId = evMatch ? evMatch[1] : undefined;
                   const amtCls = ent.amount < 0 ? "neg" : "pos";
@@ -323,20 +448,25 @@ export default function Dossier({
                         <span className="k">{ent.kind}</span>{" "}
                         <span className="dsc">{ent.description ?? ""}</span>
                       </span>
-                      <span className={`amt ${amtCls}`}>{fmtMoney(ent.amount, currency)}</span>
-                      <span className="bal">{fmtMoney(ent.balanceAfter, currency)}</span>
+                      <span className={`amt ${amtCls}`}>
+                        {fmtMoney(ent.amount, currency)}
+                      </span>
+                      <span className="bal">
+                        {fmtMoney(ent.balanceAfter, currency)}
+                      </span>
                     </div>
                   );
                 })}
-                {(runResult.ledger ?? []).length === 0 ? (
-                  <div style={{ padding: 12, color: "var(--muted)", fontStyle: "italic" }}>
+                {(execution?.ledger ?? []).length === 0 ? (
+                  <div className="muted italic" style={{ padding: 12 }}>
                     (no ledger entries)
                   </div>
                 ) : null}
               </div>
             </div>
+
             <div className="obls">
-              {(runResult.obligations ?? []).map((o: Obligation) => (
+              {(execution?.obligations ?? []).map((o: Obligation) => (
                 <div
                   key={o.id}
                   className={`obl ${o.status && o.status !== "met" ? "breach" : ""} ${linkClass(o.clauseId)}`}
@@ -345,59 +475,29 @@ export default function Dossier({
                   <div>
                     <div className="o-title">Obligation · {o.clauseId}</div>
                     <div className="o-amt">
-                      due {fmtMoney(o.amountDue, currency)} · paid {fmtMoney(o.amountPaid, currency)} · by {fmtDate(o.dueDate)}
+                      due {fmtMoney(o.amountDue, currency)} · paid{" "}
+                      {fmtMoney(o.amountPaid, currency)} · by {fmtDate(o.dueDate)}
                     </div>
                   </div>
                   <div className="o-status">{o.status ?? "—"}</div>
                 </div>
               ))}
-              {(runResult.breaches ?? []).map((b: Breach) => (
+              {(execution?.breaches ?? []).map((b: Breach) => (
                 <div
                   key={b.id}
                   className={`breach-note ${linkClass(b.clauseId)}`}
                   {...linkHandlers(b.clauseId)}
                 >
                   <strong>Breach:</strong> {b.description}
-                  <span className="meta">on {fmtDate(b.date)} · {b.clauseId}</span>
+                  <span className="meta">
+                    on {fmtDate(b.date)} · {b.clauseId}
+                  </span>
                 </div>
               ))}
             </div>
           </>
-        ) : (
-          <div style={{ padding: 14, color: "var(--muted)", fontStyle: "italic" }}>
-            execution.json not present
-          </div>
         )}
       </section>
-
-      <details className="ir-drawer zone">
-        <summary>
-          <strong>Show representation</strong> — the IR that drives every scenario ({(ir.clauses ?? []).length} clauses)
-        </summary>
-        <div className="ir-body">
-          {(ir.clauses ?? []).map(c => (
-            <div
-              key={c.id}
-              className={`article ${linkClass(c.id)}`}
-              {...linkHandlers(c.id)}
-            >
-              <div className="art-head">
-                <span className={`art-kind ${c.kind}`}>{c.kind}</span>
-                <span className="art-id">{c.id}</span>
-              </div>
-              <div className="art-title">{c.title ?? c.id}</div>
-              <div className="art-body"><ClauseBody c={c} /></div>
-            </div>
-          ))}
-          {scenario ? (
-            <div style={{ padding: 12, borderTop: "1px solid var(--rule)", fontSize: 12, color: "var(--muted)" }}>
-              <strong style={{ color: "var(--ink)" }}>Scenario events:</strong>{" "}
-              {(scenario.events ?? []).length} events ·{" "}
-              {(scenario.assumptions ?? []).length} assumptions
-            </div>
-          ) : null}
-        </div>
-      </details>
     </main>
   );
 }
