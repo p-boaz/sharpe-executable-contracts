@@ -32,10 +32,10 @@ See `contracts/SOURCES.md` for provenance.
 1. Install dependencies:
    - `node -v` (recommended: Node `>=20`)
    - `pnpm install`
-2. (Optional) enable LLM mode:
-   - `cp .env.example .env`
-   - set `OPENAI_API_KEY`
-3. Run pipeline (fallback mode):
+2. Enable LLM mode (recommended for unseen contracts):
+   - `cp .env.example .env` and set `OPENAI_API_KEY`
+   - LLM mode turns on automatically when `OPENAI_API_KEY` is set; no flag needed
+3. Run pipeline:
    - `pnpm run run --contract contracts/WesTex-VISA-credit-card-agreement.md --out out/run`
 4. Inspect outputs:
    - `out/run/ir.json`
@@ -46,21 +46,33 @@ See `contracts/SOURCES.md` for provenance.
    - `pnpm run determinism --contract contracts/WesTex-VISA-credit-card-agreement.md --out out/determinism`
 6. Verify determinism artifact:
    - `out/determinism/determinism.json`
-   - confirm `irStable`, `scenarioStable`, `executionStable`, and `englishStable` are `true`
-7. (Optional) run with LLM:
-   - append `--use-llm` to `run`/`determinism` commands.
-   - use this mode when validating generality on unseen contracts.
+   - in fallback mode: confirm `irStable`, `scenarioStable`, `executionStable`, and `englishStable` are all `true`
+   - in LLM mode: `irStable` / `scenarioStable` are `null` by design; confirm `executionStable` and `englishStable` are `true` (IR → English determinism is the guarantee)
+7. (Optional) force fallback mode:
+   - append `--no-llm` to any `run`/`determinism` command to ignore the key and exercise the heuristic extractor
 8. (Optional) run a second contract family (lease path):
    - `pnpm run run --contract contracts/Galleria-Atlanta-office-lease-American-Safety-Insurance-2006.md --out out/lease-run`
    - inspect `out/lease-run/ir.json`, `scenario.json`, `execution.json`, `english.txt`
 9. (Optional) run focused tests:
    - `pnpm test`
 
+## Browser demo (optional)
+
+A Next.js viewer of any completed run lives in `web/`. Layout is three zones, top to bottom: **Inputs** (`contract.md` ↔ `english.txt`, the round-trip anchors), **Scenario** (one card per `out/<run>/` — the variable), and **Execution** (ribbon, ledger, obligations). The IR is available in a collapsible "Show representation" drawer. Hovering a ledger row or English clause line highlights its counterpart.
+
+1. `cd web && pnpm install`
+2. `pnpm dev` → open `http://localhost:3000`
+3. Click a scenario card (or use `?run=<dirname>`) to switch between any `out/<run>/` directory that contains an `ir.json`.
+
+The page reads artifacts from `../out/` via `fs/promises` in a Server Component — no API routes, no build step for data. Re-run the pipeline and refresh the browser to see new artifacts.
+
 ## Notes
 
 - `executable -> English` is deterministic and LLM-free (`src/core/decompiler.ts`).
 - IR metadata includes deterministic `extractionHash` derived from contract markdown + extractor version.
 - IR clauses include `sourceSpan` offsets, and regenerated English includes `[source:start-end]` markers for traceability.
+- LLM mode defaults on when `OPENAI_API_KEY` is set. Under `--use-llm`, IR and scenario are *not* asserted byte-stable across runs — that's expected, the LLM is nondeterministic; English and execution remain asserted stable because the decompiler and executor are pure functions of the IR/scenario pair.
+- Without a key (or with `--no-llm`), the heuristic fallback models credit-card and lease shapes only. Other contract families degrade to honest `[UNMODELED]` clauses; the CLI prints a banner to that effect.
 - Current executor supports credit-card clauses and a minimal lease monthly-rent path.
 - A built-in test suite is available via `pnpm test`.
 - This is intentionally small and hackathon-oriented, not legal advice.

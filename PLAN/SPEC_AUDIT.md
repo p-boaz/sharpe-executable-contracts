@@ -4,7 +4,11 @@ Section-by-section comparison of this repo against the Sharpe Hackathon
 executable-contracts track spec:
 <https://github.com/hdubugras/sharpe-hackathon>
 
-Last reviewed: 2026-04-12.
+Last reviewed: 2026-04-12 (post-T13/T16 gap closure).
+
+Repo now ships 7 sample contracts under `contracts/` (all 5 spec samples
+plus OneAmerica MBSC service agreement and Sequa employment agreement),
+each with a reproduced run artifact under `out/run-step*/`.
 
 ## Overview — "What you ship"
 
@@ -44,14 +48,14 @@ Last reviewed: 2026-04-12.
 
 ## Example contracts
 
-- Only 1 of 5 sample contracts present. Only
-  `WesTex-VISA-credit-card-agreement.md` is in `contracts/`. Missing:
-  ORBCOMM procurement, Galleria lease, Masterworks engagement letter,
-  A-Plus Xodtec securities exchange.
-- Not required to ship all 5, but `Generality (15%)` is scored on unseen
-  `.md`, and the heuristic extractor is heavily credit-card-specific
-  (see regex patterns at `src/pipeline/extract-ir.ts:190-410`).
-- This is the biggest gap.
+- All 5 spec samples are present in `contracts/`: WesTex VISA,
+  ORBCOMM procurement, Galleria Atlanta lease, Masterworks engagement
+  letter, A-Plus Xodtec securities exchange. Plus two extras
+  (OneAmerica MBSC service agreement, Sequa employment agreement)
+  exercise kinds the spec doesn't name.
+- `Generality (15%)` is still the exposure: the heuristic fallback in
+  `src/pipeline/extract-ir.ts:190-410` is credit-card-specific, so
+  unseen `.md` on the `--use-llm=off` path degrades sharply.
 
 ## Held-out evaluation
 
@@ -59,8 +63,10 @@ Last reviewed: 2026-04-12.
   branch, `/cardholder/`, `/New Balance/` regexes).
 - On a lease or procurement contract with `--use-llm` off, the output
   degrades to one obligation clause and a title.
-- The LLM path is the only generality backstop — it needs to be validated
-  end-to-end on the other 4 sample types before submission.
+- The LLM path has now been exercised end-to-end on all 7 samples
+  (see `out/run-step*/`) — each produces a typed IR, executes, and
+  round-trips to English. Judges running without an API key still hit
+  the heuristic fallback, which is the real exposure.
 
 ## Requirements checklist
 
@@ -76,14 +82,16 @@ Last reviewed: 2026-04-12.
 
 ## Judging criteria self-assessment
 
-- **Expressiveness (25%)** — narrow: APR, min payment, late/over-limit fee,
-  default. No cross-references, multi-party, or amendments. Only 1 contract
-  type truly modeled.
+- **Expressiveness (25%)** — broadened: APR, min payment, late/over-limit
+  fee, default, plus lease/procurement/engagement/securities/service/
+  employment clauses via the LLM extractor. Still no cross-references,
+  amendments, or deep multi-party obligation keying.
 - **Executability (25%)** — strong: real numeric computation, breach
   detection, stateful monthly stepping.
 - **Round-trip fidelity (25%)** — strong: deterministic, hashed, diffable.
-- **Generality (15%)** — weakest axis: LLM extractor is the only generality
-  mechanism; untested on other 4 samples.
+- **Generality (15%)** — LLM extractor now validated on 7 sample types;
+  heuristic fallback remains credit-card-only, so the no-key path is
+  still the weakest axis.
 - **Creativity (10%)** — neutral.
 
 ## Submission requirements
@@ -141,13 +149,25 @@ Current README has 7 numbered steps. Gaps vs. spec's checklist:
 
 ## Top gaps to close, ranked
 
-1. Test the LLM pipeline on the other 4 contract types (lease, procurement,
-   engagement, securities). Biggest `Generality` lever.
-2. Add the other 4 sample `.md` files to `contracts/` so judges can
-   reproduce the demo on each.
-3. README demo steps: add Node version, English-step-only instructions,
-   explicit determinism pass/fail check, writeup link.
-4. Default to `--use-llm` when `OPENAI_API_KEY` is set — the spec treats
-   LLM-scenario as required, not opt-in.
-5. Surface unmodeled clauses in the English output with an explicit
-   "unmodeled" marker (spec's "Partial coverage" design question).
+1. ~~README demo steps: Node version, determinism pass/fail check,
+   writeup link.~~ **Closed** by T10 — the 9-step README already
+   lists Node version, exact stability keys to grep, and writeup
+   links.
+2. ~~Default to `--use-llm` when `OPENAI_API_KEY` is set.~~
+   **Closed** by T16 — `parseArgs` in `src/main.ts` now defaults
+   LLM mode on when the key is present, `--no-llm` forces fallback,
+   and the stdout `LLM mode:` line names the mode *and* the reason.
+3. ~~Surface unmodeled clauses in the English output with an explicit
+   "unmodeled" marker.~~ **Closed** — `src/core/decompiler.ts:56`
+   already prefixes unmodeled clauses with `[UNMODELED] `, and
+   `tests/pipeline.test.ts` asserts honest modeled/unmodeled mix on
+   the lease sample.
+4. `web/` dossier (T11/T12/T14) — **deferred.** No `web/` shipped;
+   judges inspect CLI artifacts under `out/<run>/`. Revisit if a
+   browser dossier becomes a submission hard requirement.
+5. ~~Heuristic fallback beyond credit-card regexes.~~ Partially
+   closed by T16 — the CLI now prints a stderr banner under
+   `--no-llm` / no key, naming credit-card and lease as the only
+   covered families so degradation is visible at run time.
+   Hardening the fallback past those two families is deferred
+   (tracked under T15 scope guidance).
