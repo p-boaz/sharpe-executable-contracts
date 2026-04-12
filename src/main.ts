@@ -4,11 +4,18 @@ import { ensureDir, writeJson, writeText } from "./io/fs.js";
 import { runPipeline } from "./pipeline/run-pipeline.js";
 import { stableStringify } from "./util/json.js";
 
+type LlmModeReason =
+  | "on (OPENAI_API_KEY detected)"
+  | "on (--use-llm)"
+  | "off (--no-llm)"
+  | "off (no OPENAI_API_KEY)";
+
 interface CliOptions {
   command: "run" | "determinism" | "help";
   contractPath: string;
   outDir: string;
   useLlm: boolean;
+  llmModeReason: LlmModeReason;
 }
 
 function hashText(value: string): string {
@@ -19,7 +26,8 @@ function parseArgs(argv: string[]): CliOptions {
   const command = (argv[0] || "help") as CliOptions["command"];
   let contractPath = "contracts/WesTex-VISA-credit-card-agreement.md";
   let outDir = command === "determinism" ? "out/determinism" : "out/run";
-  let useLlm = false;
+  let explicitUseLlm = false;
+  let explicitNoLlm = false;
 
   for (let i = 1; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -35,8 +43,30 @@ function parseArgs(argv: string[]): CliOptions {
       continue;
     }
     if (arg === "--use-llm") {
-      useLlm = true;
+      explicitUseLlm = true;
+      continue;
     }
+    if (arg === "--no-llm") {
+      explicitNoLlm = true;
+      continue;
+    }
+  }
+
+  const hasKey = Boolean(process.env.OPENAI_API_KEY);
+  let useLlm: boolean;
+  let llmModeReason: LlmModeReason;
+  if (explicitNoLlm) {
+    useLlm = false;
+    llmModeReason = "off (--no-llm)";
+  } else if (explicitUseLlm) {
+    useLlm = true;
+    llmModeReason = "on (--use-llm)";
+  } else if (hasKey) {
+    useLlm = true;
+    llmModeReason = "on (OPENAI_API_KEY detected)";
+  } else {
+    useLlm = false;
+    llmModeReason = "off (no OPENAI_API_KEY)";
   }
 
   if (command !== "run" && command !== "determinism") {
@@ -45,6 +75,7 @@ function parseArgs(argv: string[]): CliOptions {
       contractPath,
       outDir,
       useLlm,
+      llmModeReason,
     };
   }
 
@@ -53,6 +84,7 @@ function parseArgs(argv: string[]): CliOptions {
     contractPath,
     outDir,
     useLlm,
+    llmModeReason,
   };
 }
 
@@ -60,8 +92,11 @@ function printHelp(): void {
   process.stdout.write(
     [
       "Usage:",
-      "  pnpm run run --contract <path> --out <dir> [--use-llm]",
-      "  pnpm run determinism --contract <path> --out <dir> [--use-llm]",
+      "  pnpm run run --contract <path> --out <dir> [--use-llm | --no-llm]",
+      "  pnpm run determinism --contract <path> --out <dir> [--use-llm | --no-llm]",
+      "",
+      "LLM mode:",
+      "  defaults on when OPENAI_API_KEY is set; --no-llm forces fallback.",
       "",
       "Defaults:",
       "  contract: contracts/WesTex-VISA-credit-card-agreement.md",
@@ -72,10 +107,19 @@ function printHelp(): void {
   process.stdout.write("\n");
 }
 
+const HEURISTIC_FALLBACK_BANNER =
+  "Note: running without --use-llm. Heuristic fallback models credit-card and lease\n" +
+  "shapes only; other contract families will degrade to honest [UNMODELED] clauses.\n" +
+  "Set OPENAI_API_KEY and re-run for full extraction.\n";
+
 async function runCommand(options: CliOptions): Promise<void> {
   const contractPath = resolve(process.cwd(), options.contractPath);
   const outDir = resolve(process.cwd(), options.outDir);
   await ensureDir(outDir);
+
+  if (!options.useLlm) {
+    process.stderr.write(HEURISTIC_FALLBACK_BANNER);
+  }
 
   const result = await runPipeline({
     contractPath,
@@ -93,7 +137,7 @@ async function runCommand(options: CliOptions): Promise<void> {
       `Command: run`,
       `Contract: ${options.contractPath}`,
       `Output: ${options.outDir}`,
-      `LLM mode: ${options.useLlm ? "on" : "off"}`,
+      `LLM mode: ${options.llmModeReason}`,
       `Ending balance: $${result.execution.summary.endingBalance.toFixed(2)}`,
       `Breaches: ${result.execution.breaches.length}`,
     ].join("\n"),
@@ -105,6 +149,10 @@ async function runDeterminismCommand(options: CliOptions): Promise<void> {
   const contractPath = resolve(process.cwd(), options.contractPath);
   const outDir = resolve(process.cwd(), options.outDir);
   await ensureDir(outDir);
+
+  if (!options.useLlm) {
+    process.stderr.write(HEURISTIC_FALLBACK_BANNER);
+  }
 
   const resultA = await runPipeline({
     contractPath,
@@ -124,10 +172,17 @@ async function runDeterminismCommand(options: CliOptions): Promise<void> {
   const englishA = resultA.english;
   const englishB = resultB.english;
 
-  const irStable = irA === irB;
-  const scenarioStable = scenarioA === scenarioB;
+  const irEqual = irA === irB;
+  const scenarioEqual = scenarioA === scenarioB;
   const englishStable = englishA === englishB;
   const executionStable = executionA === executionB;
+
+  const llmMode = options.useLlm;
+  const irStable: boolean | null = llmMode ? null : irEqual;
+  const scenarioStable: boolean | null = llmMode ? null : scenarioEqual;
+  const comparedArtifacts = llmMode
+    ? ["execution", "english"]
+    : ["ir", "scenario", "execution", "english"];
 
   await writeText(resolve(outDir, "ir-a.json"), `${irA}\n`);
   await writeText(resolve(outDir, "ir-b.json"), `${irB}\n`);
@@ -137,8 +192,10 @@ async function runDeterminismCommand(options: CliOptions): Promise<void> {
   await writeText(resolve(outDir, "english-b.txt"), englishB);
   await writeText(resolve(outDir, "execution-a.json"), `${executionA}\n`);
   await writeText(resolve(outDir, "execution-b.json"), `${executionB}\n`);
-  await writeJson(resolve(outDir, "determinism.json"), {
-    comparedArtifacts: ["ir", "scenario", "execution", "english"],
+
+  const determinismArtifact: Record<string, unknown> = {
+    comparedArtifacts,
+    llmMode,
     irStable,
     scenarioStable,
     englishStable,
@@ -151,16 +208,24 @@ async function runDeterminismCommand(options: CliOptions): Promise<void> {
     englishHashB: hashText(englishB),
     executionHashA: hashText(executionA),
     executionHashB: hashText(executionB),
-  });
+  };
+  if (llmMode) {
+    determinismArtifact.notes =
+      "IR and scenario stability are not asserted under --use-llm; the LLM path is expected to vary across runs. The executable-to-English leg is the determinism guarantee.";
+  }
+  await writeJson(resolve(outDir, "determinism.json"), determinismArtifact);
+
+  const formatLegacyStability = (value: boolean | null): string =>
+    value === null ? "n/a (LLM mode)" : String(value);
 
   process.stdout.write(
     [
       `Command: determinism`,
       `Contract: ${options.contractPath}`,
       `Output: ${options.outDir}`,
-      `LLM mode: ${options.useLlm ? "on" : "off"}`,
-      `IR stable: ${irStable}`,
-      `Scenario stable: ${scenarioStable}`,
+      `LLM mode: ${options.llmModeReason}`,
+      `IR stable: ${formatLegacyStability(irStable)}`,
+      `Scenario stable: ${formatLegacyStability(scenarioStable)}`,
       `English stable: ${englishStable}`,
       `Execution stable: ${executionStable}`,
     ].join("\n"),

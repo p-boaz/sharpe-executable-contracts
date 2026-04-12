@@ -170,6 +170,7 @@ test("determinism command compares independent runs", () => {
         "determinism",
         "--contract",
         "contracts/WesTex-VISA-credit-card-agreement.md",
+        "--no-llm",
         "--out",
         outDir,
       ],
@@ -177,15 +178,24 @@ test("determinism command compares independent runs", () => {
     );
 
     const determinism = JSON.parse(readFileSync(join(outDir, "determinism.json"), "utf8")) as {
-      irStable: boolean;
-      scenarioStable: boolean;
+      irStable: boolean | null;
+      scenarioStable: boolean | null;
       executionStable: boolean;
       englishStable: boolean;
+      llmMode: boolean;
+      comparedArtifacts: string[];
     };
+    assert.equal(determinism.llmMode, false);
     assert.equal(determinism.irStable, true);
     assert.equal(determinism.scenarioStable, true);
     assert.equal(determinism.executionStable, true);
     assert.equal(determinism.englishStable, true);
+    assert.deepEqual(determinism.comparedArtifacts, [
+      "ir",
+      "scenario",
+      "execution",
+      "english",
+    ]);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }

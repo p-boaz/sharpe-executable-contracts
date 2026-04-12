@@ -261,7 +261,7 @@ These tasks make the repo safer to change and easier for judges to trust.
 
 **Outcome:** Updated `README.md` to a 9-step judge-demo flow with explicit commands/artifact paths, deterministic checks, Node version guidance, limits, and writeup links.
 
-### [deferred] T11 — Judge-facing dossier UI over existing artifacts
+### [x] T11 — Judge-facing dossier UI over existing artifacts
 
 **Goal:** Give a judge a single-page browser view of any `out/<run>/` bundle that makes the Markdown → IR → scenario → execution → English round-trip legible at a glance.
 
@@ -278,9 +278,9 @@ These tasks make the repo safer to change and easier for judges to trust.
 - `pnpm build` and `pnpm typecheck` in `web/` are clean
 - README documents the optional browser view
 
-**Deferred:** No `web/` app was committed. The CLI artifacts under `out/<run>/` remain the judge-facing surface for this submission.
+**Outcome:** Added `web/` Next.js 15 / React 19 app with Server Component run loader in `web/app/page.tsx`, client dossier with React-state cross-linking in `web/app/Dossier.tsx`, editorial CSS in `web/app/globals.css`, and a "Browser demo (optional)" section in `README.md`. Build and typecheck clean.
 
-### [deferred] T12 — Simplify web/ to foreground the scenario as the variable
+### [x] T12 — Simplify web/ to foreground the scenario as the variable
 
 **Goal:** Rework `web/` so a judge reads the round-trip story in one glance: the contract and its regenerated English are the fixed anchors, the scenario is the knob, and the execution reacts to it. Cut the editorial styling.
 
@@ -310,7 +310,7 @@ These tasks make the repo safer to change and easier for judges to trust.
 
 **Explicit non-goals:** dark mode, diffing scenarios side-by-side, in-browser scenario editing, animations on scenario switch, branding.
 
-**Deferred:** Depends on T11; no `web/` was shipped. Task body preserved as a spec for future work.
+**Outcome:** Reworked `web/` to inputs / scenario strip / execution / collapsible IR drawer. Stripped Fraunces/Newsreader/JetBrains Mono imports in `web/app/layout.tsx`, rewrote `web/app/globals.css` to a minimal system-font palette, loaded per-run summaries in `web/app/page.tsx` so scenario cards show run id / title / first events / ending balance / breach badge, and rebuilt `web/app/Dossier.tsx` around the three zones with clause↔ledger↔english hover linking preserved. Updated README's "Browser demo (optional)" to describe the new layout. `pnpm typecheck` and `pnpm build` in `web/` are clean; visually verified in Playwright at `localhost:3001`.
 
 ---
 
