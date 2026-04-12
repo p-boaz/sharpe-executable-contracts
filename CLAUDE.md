@@ -40,3 +40,21 @@ Important constraint:
 - They make scenario assumptions clearer.
 - They preserve or improve readability of the generated English.
 - They keep the repo understandable for the next engineer.
+
+## Working with PLAN/
+
+The `PLAN/` directory holds the project's live planning state. Consult it by intent:
+
+- About to start work? → read `PLAN/TODOS.md`, pick the highest unchecked P0.
+- Unsure if a design choice is allowed? → read `PLAN/DESIGN_DECISIONS.md`.
+- Unsure if work still matches the goal? → read `PLAN/END_STATE.md`.
+- Want a fresh spec-vs-repo diff? → regenerate `PLAN/SPEC_AUDIT.md` (only on explicit request).
+
+As you make progress, update `PLAN/TODOS.md` inline:
+
+- Flip `[ ]` to `[~]` when starting a TODO.
+- Flip `[~]` to `[x]` when it is genuinely done — tests pass, artifacts produced.
+- Append an `**Outcome:**` line under the TODO's `Done when:` block: one sentence naming what shipped plus a commit SHA or key file path.
+- If a new task surfaces mid-work, add it to `TODOS.md` under the right priority bucket (P0–P3).
+
+Do not edit `END_STATE.md` or `DESIGN_DECISIONS.md` without explicit user approval. Do not create new docs under `PLAN/` without asking.

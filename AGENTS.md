@@ -50,3 +50,7 @@ When making changes, prioritize:
 - Prefer adding small focused logic over trying to formalize every clause type.
 - Surface limitations explicitly instead of hiding them behind vague outputs.
 - Keep prompts, parsing, IR, execution, and decompilation boundaries clear.
+
+## Working with PLAN/
+
+For how to use `PLAN/` and how to track progress as work ships, see the "Working with PLAN/" section in `CLAUDE.md`.
