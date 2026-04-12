@@ -162,9 +162,10 @@ Current README has 7 numbered steps. Gaps vs. spec's checklist:
    already prefixes unmodeled clauses with `[UNMODELED] `, and
    `tests/pipeline.test.ts` asserts honest modeled/unmodeled mix on
    the lease sample.
-4. `web/` dossier (T11/T12/T14) — **deferred.** No `web/` shipped;
-   judges inspect CLI artifacts under `out/<run>/`. Revisit if a
-   browser dossier becomes a submission hard requirement.
+4. ~~`web/` dossier should foreground the scenario as the variable.~~
+   **Closed** by T11 / T12 / T14 — `web/` ships a three-zone layout
+   (inputs row / scenario strip / execution pane + collapsible IR
+   drawer) and renders credit-card and lease runs end-to-end.
 5. ~~Heuristic fallback beyond credit-card regexes.~~ Partially
    closed by T16 — the CLI now prints a stderr banner under
    `--no-llm` / no key, naming credit-card and lease as the only
