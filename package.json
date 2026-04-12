@@ -1,0 +1,22 @@
+{
+  "name": "sharpe-executable-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "run": "tsx src/main.ts run",
+    "demo": "tsx src/main.ts run --contract contracts/WesTex-VISA-credit-card-agreement.md --out out/demo",
+    "determinism": "tsx src/main.ts determinism"
+  },
+  "dependencies": {
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.18.6"
+  },
+  "packageManager": "pnpm@10.30.3"
+}
