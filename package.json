@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "test:expr": "tsx src/core/eval-expr.test.ts",
+    "test:conditions": "tsx src/core/condition-exec.test.ts",
     "run": "tsx src/main.ts run",
     "demo": "tsx src/main.ts run --contract contracts/WesTex-VISA-credit-card-agreement.md --out out/demo",
     "determinism": "tsx src/main.ts determinism"
