@@ -3,3 +3,8 @@ pnpm-lock.yaml
 dist
 out
 .env
+
+# Local tool caches and screenshots
+.codex/
+.playwright-mcp/
+t[0-9]*-*.png
