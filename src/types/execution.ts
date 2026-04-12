@@ -11,7 +11,7 @@ export interface LedgerEntry {
 export interface Breach {
   id: string;
   date: string;
-  type: "late_payment" | "default" | "over_limit";
+  type: "late_payment" | "default" | "over_limit" | "obligation_missed";
   clauseId?: string;
   description: string;
 }

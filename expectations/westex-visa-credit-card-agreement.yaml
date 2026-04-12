@@ -1,0 +1,170 @@
+# Expected IR content for WesTex VISA credit card agreement.
+#
+# This file is hand-authored. It is the gold standard we want the
+# extractor to reproduce. A separate checker reads this alongside the
+# generated IR and reports, per expectation, PASS / FAIL / WEAK and a
+# coverage score for the contract.
+#
+# Format conventions:
+# - `intent` is a short human-readable summary of what the clause says.
+#   A reader should be able to understand the contract's load-bearing
+#   terms by reading just the `intent` lines.
+# - `sourceQuote` is the minimal verbatim snippet from the Markdown that
+#   anchors this expectation. The checker uses it to locate the matching
+#   extracted clause (by `sourceSpan` overlap or `sourceText` substring).
+# - `mustMatch` is the machine assertion on the extracted clause's fields.
+# - `expectedUnmodeled` lists clauses we don't expect to execute but DO
+#   expect the IR to acknowledge as `modeled: false` stubs.
+# - `knownConflicts` names real ambiguities in the source so the
+#   expectation file doesn't pretend the contract is cleaner than it is.
+
+contractId: westex-visa-credit-card-agreement
+contractFile: contracts/WesTex-VISA-credit-card-agreement.md
+family: credit-card
+
+expectedClauses:
+  - id: late-payment-fee
+    intent: "Late payment triggers a $25 fixed fee."
+    sourceQuote: "Late Payment Fee. If you are late in making a payment, a late charge of $25.00"
+    mustMatch:
+      semanticTag: late_payment_fee
+      modeled: true
+      effect:
+        kind: payment
+        payer: cardholder
+        payee: issuer
+        amount: { op: const, value: 25.00 }
+
+  - id: over-credit-limit-fee
+    intent: "$10 fee when new balance exceeds credit limit."
+    sourceQuote: "Over Credit Limit Fee. You may be charged a fee of $10.00"
+    mustMatch:
+      semanticTag: over_limit_fee
+      modeled: true
+      effect:
+        kind: payment
+        payer: cardholder
+        payee: issuer
+        amount: { op: const, value: 10.00 }
+    # This is the specific extractor bug T17c surfaced: the LLM path
+    # currently emits `semanticTag: late_payment_fee` for this clause.
+
+  - id: returned-payment-fee
+    intent: "Returned check / NSF triggers $25 fee (capped at minimum payment)."
+    sourceQuote: "you may be charged a fee of $25.00 for each item returned"
+    mustMatch:
+      semanticTag: returned_payment_fee
+      modeled: true
+      effect:
+        kind: payment
+        payer: cardholder
+        payee: issuer
+        amount: { op: const, value: 25.00 }
+
+  - id: foreign-transaction-fee
+    intent: "International transactions incur up to 1% foreign transaction fee."
+    sourceQuote: "plus up to a 1% Foreign Transaction Fee"
+    mustMatch:
+      semanticTag: foreign_transaction_fee
+      modeled: true
+      effect:
+        kind: payment
+        payer: cardholder
+        payee: issuer
+        # Percent fee: amount = (rate/100) * transaction_amount.
+        exprShape: "mul(const(0.01), var(transaction_amount))"
+
+  - id: minimum-payment-formula
+    intent: "Minimum payment is the greater of 3% of the new balance or $15."
+    sourceQuote: '"minimum payment" will equal 3% of the New Balance or $15.00, whichever is greater'
+    mustMatch:
+      semanticTag: minimum_payment_formula
+      modeled: true
+      effect:
+        kind: formula
+        outputVar: minimum_payment_due
+        exprShape: "max(mul(var(new_balance), const(0.03)), const(15))"
+
+  - id: interest-rate-platinum
+    intent: "Platinum APR is a tiered range 7.9%–15.9%."
+    sourceQuote: "7.9-15.9%** \\- VISA® Platinum"
+    mustMatch:
+      semanticTag: apr_nominal
+      modeled: true
+      effect:
+        kind: formula
+        outputVar: apr_nominal
+    note: >
+      The contract lists multiple periodic rates (0.018904%/day for 6.9% APR
+      up through 0.03534%/day for 12.9% APR). An honest IR could either pick
+      a default rate or emit an unmodeled placeholder with a note that APR is
+      tiered. Either is acceptable; what is NOT acceptable is silently
+      hardcoding a single rate without surfacing the tier.
+
+  - id: grace-period
+    intent: "25-day grace period on purchases if previous balance was paid in full."
+    sourceQuote: "you have not less than 25 days to repay your account balance before an INTEREST CHARGE on new purchases will be imposed"
+    mustMatch:
+      semanticTag: grace_period_obligation
+      modeled: true
+      effect:
+        kind: obligation
+        actor: cardholder
+        due:
+          type: calendar_days
+          value: 25
+
+  - id: default-triggers
+    intent: "Six enumerated ways to default: missed payment, broken promise, insolvency, legal process, false info, endangered ability to repay."
+    sourceQuote: "You will be in default:** (1) if you fail to make any payment on time"
+    mustMatch:
+      semanticTag: payment_default
+      modeled: true
+      effect:
+        kind: default
+        # Accept either a single clause with 6 triggers or 6 separate clauses.
+        triggerKeywords:
+          - "fail to make any payment"
+          - "insolvent"
+          - "Bankruptcy"
+
+expectedUnmodeled:
+  - intent: "Billing error dispute rights under the Fair Credit Billing Act."
+    sourceHeading: "YOUR BILLING RIGHTS"
+    mustAppearAs: "modeled: false clause or definition referencing FCBA dispute process"
+
+  - intent: "Joint applicant liability — joint signers are each liable for all charges."
+    sourceHeading: "Joint Applicant Liability"
+
+  - intent: "Security interest over depositor accounts (excluding IRA)."
+    sourceHeading: "SECURITY"
+
+  - intent: "Acceleration on default — entire balance becomes due."
+    sourceHeading: "Acceleration"
+    # Arguably modelable (flip a boolean when default fires), but out of scope today.
+
+knownConflicts:
+  - between:
+      - "Section 7 Over Credit Limit Fee ($10.00)"
+      - "Credit Disclosure table 'Over-the-Credit Limit: NONE'"
+    resolution: >
+      Use Section 7's concrete $10 value. The disclosure table's 'NONE'
+      is a boilerplate artifact from the source document. A future
+      version of the extractor that reads both should flag this as a
+      source conflict rather than silently pick one.
+
+coverageTargets:
+  # Used by the checker to compute per-contract scores.
+  # Held-out contracts will have their own targets; a judging rubric
+  # would pass at, say, ≥ 80% of `modeled` expectations and 100% of
+  # `critical` expectations.
+  critical:
+    - late-payment-fee
+    - over-credit-limit-fee
+    - minimum-payment-formula
+    - default-triggers
+  supporting:
+    - returned-payment-fee
+    - foreign-transaction-fee
+    - interest-rate-platinum
+    - grace-period

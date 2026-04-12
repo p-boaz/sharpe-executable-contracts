@@ -69,45 +69,80 @@ function renderExpr(e: Expr | undefined): string {
 }
 
 function ClauseBody({ c }: { c: Clause }) {
-  if (c.kind === "formula" && c.outputVar) {
+  const effect = c.effect;
+  if (!effect) return <div className="muted italic">{c.title ?? ""}</div>;
+
+  const tagLabel = c.semanticTag ? (
+    <span className="mono" style={{ opacity: 0.7 }}>
+      {c.semanticTag}
+    </span>
+  ) : null;
+
+  if (effect.kind === "formula" && effect.outputVar) {
     return (
       <div>
-        computes <span className="mono">{c.outputVar}</span>
+        {tagLabel ? <>{tagLabel} · </> : null}
+        computes <span className="mono">{effect.outputVar}</span>
         {" = "}
-        <span className="mono">{renderExpr(c.expr)}</span>
+        <span className="mono">{renderExpr(effect.expr)}</span>
       </div>
     );
   }
-  if (c.kind === "fee") {
+  if (effect.kind === "payment") {
+    const amountText = effect.amount?.op === "const" ? fmtMoney(Number(effect.amount.value)) : renderExpr(effect.amount);
     return (
       <div>
-        {c.feeType ?? "fee"} · <span className="mono">{fmtMoney(c.amountValue)}</span>
-        {c.triggerDescription ? <> · when {c.triggerDescription}</> : null}
+        {tagLabel ? <>{tagLabel} · </> : null}
+        {effect.payer ?? "party"} pays {effect.payee ?? "counterparty"}{" "}
+        <span className="mono">{amountText}</span>
+        {effect.assetKind ? <> [{effect.assetKind}]</> : null}
       </div>
     );
   }
-  if (c.kind === "obligation") {
+  if (effect.kind === "obligation") {
     return (
       <div>
-        {c.actor ?? "party"} must {c.action ?? "perform duty"}
-        {c.due?.value ? (
+        {tagLabel ? <>{tagLabel} · </> : null}
+        {effect.actor ?? "party"} must {effect.action ?? "perform duty"}
+        {effect.due?.value ? (
           <>
             {" "}
-            ({c.due?.type ?? "due"}: <span className="mono">{c.due.value}</span>)
+            ({effect.due?.type ?? "due"}: <span className="mono">{effect.due.value}</span>
+            {effect.due?.direction ? ` ${effect.due.direction}` : ""})
           </>
         ) : null}
       </div>
     );
   }
-  if (c.kind === "default") {
+  if (effect.kind === "accumulation") {
+    return (
+      <div>
+        {tagLabel ? <>{tagLabel} · </> : null}
+        accumulate <span className="mono">{renderExpr(effect.rate)}</span> per {effect.per}
+      </div>
+    );
+  }
+  if (effect.kind === "indemnification") {
+    return (
+      <div>
+        {tagLabel ? <>{tagLabel} · </> : null}
+        {effect.indemnifier ?? "party"} indemnifies {effect.indemnitee ?? "counterparty"}
+        {effect.scope ? <> for {effect.scope}</> : null}
+      </div>
+    );
+  }
+  if (effect.kind === "default") {
     return (
       <>
-        <div>when {c.triggerDescription ?? "triggered"}</div>
-        {c.consequences?.length ? (
-          <div style={{ marginTop: 4 }}>Consequences: {c.consequences.join("; ")}</div>
+        {tagLabel ? <div>{tagLabel}</div> : null}
+        {effect.consequences?.length ? (
+          <div style={{ marginTop: 4 }}>Consequences: {effect.consequences.join("; ")}</div>
         ) : null}
       </>
     );
+  }
+  if (effect.kind === "unmodeled") {
+    return <div className="muted italic">(unmodeled — see source text)</div>;
   }
   return <div className="muted italic">{c.title ?? ""}</div>;
 }
@@ -127,9 +162,15 @@ export default function Dossier({
   const [hover, setHover] = useState<Link>({});
   const [locked, setLocked] = useState<Link>({});
   const [ranFor, setRanFor] = useState<string | null>(null);
+  const [liveExecution, setLiveExecution] = useState<RunResult | null>(execution);
+  const [isRunning, setIsRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
   useEffect(() => {
     setRanFor(null);
+    setLiveExecution(execution);
+    setIsRunning(false);
+    setRunError(null);
   }, [selectedContractId, selectedArchetype]);
 
   useEffect(() => {
@@ -171,8 +212,8 @@ export default function Dossier({
   );
 
   const currency = ir.currency ?? "USD";
-  const summary = execution?.summary ?? {};
-  const runResultsVisible = ranFor === selectedArchetype && !!execution;
+  const summary = liveExecution?.summary ?? {};
+  const runResultsVisible = ranFor === selectedArchetype && !!liveExecution;
 
   const englishBlocks = useMemo(() => {
     return english.split("\n").map((raw, i) => {
@@ -224,8 +265,33 @@ export default function Dossier({
     );
   };
 
-  const runNow = () => {
-    if (selectedArchetype) setRanFor(selectedArchetype);
+  const runNow = async () => {
+    if (!selectedArchetype || isRunning) return;
+    setIsRunning(true);
+    setRunError(null);
+    try {
+      const response = await fetch("/api/execute", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contractId: selectedContractId,
+          archetype: selectedArchetype,
+        }),
+      });
+      const payload = (await response.json()) as {
+        execution?: RunResult;
+        error?: string;
+      };
+      if (!response.ok || !payload.execution) {
+        throw new Error(payload.error || "Execution request failed");
+      }
+      setLiveExecution(payload.execution);
+      setRanFor(selectedArchetype);
+    } catch (error) {
+      setRunError(error instanceof Error ? error.message : "Execution failed");
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   return (
@@ -303,7 +369,9 @@ export default function Dossier({
                 {...linkHandlers(c.id)}
               >
                 <div className="art-head">
-                  <span className={`art-kind ${c.kind}`}>{c.kind}</span>
+                  <span className={`art-kind ${c.effect?.kind ?? "unmodeled"}`}>
+                    {c.effect?.kind ?? "unmodeled"}
+                  </span>
                   <span className="art-id">{c.id}</span>
                 </div>
                 <div className="art-title">{c.title ?? c.id}</div>
@@ -368,9 +436,9 @@ export default function Dossier({
               type="button"
               className="execute-button"
               onClick={runNow}
-              disabled={!selectedArchetype || !execution}
+              disabled={!selectedArchetype || isRunning}
             >
-              ▶ Run{" "}
+              {isRunning ? "Running..." : "▶ Run"}{" "}
               <span className="mono">{selectedArchetype ?? ""}</span>{" "}
               against <span className="mono">{meta.contractId}</span>
             </button>
@@ -384,6 +452,11 @@ export default function Dossier({
                 <>Select a scenario above to enable this step.</>
               )}
             </div>
+            {runError ? (
+              <div className="hint" style={{ marginTop: 8, color: "#b42318" }}>
+                {runError}
+              </div>
+            ) : null}
           </div>
         ) : (
           <>
@@ -433,7 +506,7 @@ export default function Dossier({
                 <div className="r">Balance</div>
               </div>
               <div>
-                {(execution?.ledger ?? []).map((ent: LedgerEntry) => {
+                {(liveExecution?.ledger ?? []).map((ent: LedgerEntry) => {
                   const evMatch = /(evt-\d+)/.exec(ent.id ?? "");
                   const eventId = evMatch ? evMatch[1] : undefined;
                   const amtCls = ent.amount < 0 ? "neg" : "pos";
@@ -457,7 +530,7 @@ export default function Dossier({
                     </div>
                   );
                 })}
-                {(execution?.ledger ?? []).length === 0 ? (
+                {(liveExecution?.ledger ?? []).length === 0 ? (
                   <div className="muted italic" style={{ padding: 12 }}>
                     (no ledger entries)
                   </div>
@@ -466,7 +539,7 @@ export default function Dossier({
             </div>
 
             <div className="obls">
-              {(execution?.obligations ?? []).map((o: Obligation) => (
+              {(liveExecution?.obligations ?? []).map((o: Obligation) => (
                 <div
                   key={o.id}
                   className={`obl ${o.status && o.status !== "met" ? "breach" : ""} ${linkClass(o.clauseId)}`}
@@ -482,7 +555,7 @@ export default function Dossier({
                   <div className="o-status">{o.status ?? "—"}</div>
                 </div>
               ))}
-              {(execution?.breaches ?? []).map((b: Breach) => (
+              {(liveExecution?.breaches ?? []).map((b: Breach) => (
                 <div
                   key={b.id}
                   className={`breach-note ${linkClass(b.clauseId)}`}

@@ -96,6 +96,60 @@ These are the highest-priority tasks because they directly determine whether the
 
 **Outcome:** `parseArgs` / `runCommand` / `runDeterminismCommand` in `src/main.ts` implement the default-on behavior, the `--no-llm` force-off flag, the reasoned `LLM mode:` line, and the stderr heuristic-fallback banner. README quickstart step 2 and the Notes section document the new default.
 
+### [~] T23 — Path B: effect-based IR restructure for held-out generality
+
+**Goal:** Restructure the clause-kind union in `src/types/ir.ts` into a composable `Effect` + `semanticTag` + universal `condition` shape, so the IR honestly expresses all 7 bundled contract families instead of being credit-card-shaped. Unblocks Executability (25%) and Generality (15%) on held-out contracts.
+
+**Why this matters:** The hand-authored expectation files under `expectations/` show the current IR only fits the credit-card contract cleanly. On the other six, `FeeClause.feeType`'s closed enum force-fits or corrupts compensation/damages/incentives clauses, and `FormulaClause` has no way to carry the triggers that make non-credit-card clauses conditional. The refactor replaces the closed clause-kind union with:
+
+- `Clause` carrying `semanticTag: string` (open), `condition?: BoolExpr` (universal), and one `effect: Effect` field.
+- `Effect` union: `payment | obligation | formula | accumulation | indemnification | default | unmodeled`.
+- `payment` carries `assetKind?: string` so non-cash transfers (shares, commodities) stop straining the primitive.
+- `TemporalRule` gains `direction?: "before" | "after"` (default `"after"`) and `months | years` to the unit list, plus `graceAfter?: TemporalRule` for compound durations ("14 months + 60 days grace").
+- `ContractIR.currency: string` replaces the literal `"USD"` type.
+
+**Shape of the change:**
+
+Land as a single branch / one substantial commit. 11-step implementation order:
+
+1. New `src/types/ir.ts` — the ground truth.
+2. Heuristic extractor + normalizers (`src/pipeline/extract-ir.ts`) — credit-card + lease paths rewritten against new shape, get it compiling.
+3. Decompiler (`src/core/decompiler.ts`) — dispatch on `effect.kind`.
+4. Executor (`src/core/executor.ts`) — credit-card + lease paths rekeyed on `semanticTag` + `effect.kind`.
+5. Archetype validators (`src/pipeline/archetype-check.ts`) — rekey on `semanticTag` instead of `feeType`.
+6. Scenario generator (`src/pipeline/generate-scenario.ts`) + LLM prompts.
+7. Tests (`tests/`, `src/core/*.test.ts`) — greened.
+8. Web dossier (`web/app/Dossier.tsx`) — reads `effect.kind`.
+9. Update 3 existing expectation files (WesTex, Masterworks, ORBCOMM) to new shape.
+10. Already-written expectation files for remaining 4 contracts stand (lease, securities, service, employment were written directly in Path B shape).
+11. Checker (`scripts/check-expectations.ts`, new) — reads expectation YAML, compares against extracted IR, reports per-contract pass/fail on critical + supporting targets.
+
+**Scope guard:**
+
+- LLM path stays last to stabilize — heuristic path must be fully green before touching prompts.
+- No new effect kinds beyond the 7 proposed. `modeled: false` stubs stay the answer for milestone schedules, force-majeure modifiers, amendment layering, stepped-schedule aggregators, recurring-payment aggregators, present-value computations.
+- No Tier 3 scope creep (amendment-over-base, cross-clause modifiers).
+- The web dossier update is last because UI reads shape the executor emits — keep tests and executor green before touching UI.
+
+**Done when:**
+
+- All 7 contracts in `contracts/` run through `pnpm run run --no-llm` (where heuristic coverage exists) and `--use-llm` (where LLM path is used) without crashing, emitting IRs that validate against their expectation files' `critical` targets.
+- `pnpm test` green. `pnpm run determinism` still reports IR / scenario / execution / English stable on heuristic credit-card + lease runs.
+- `pnpm build` + `pnpm typecheck` green in `web/`.
+- `scripts/check-expectations.ts` runs end-to-end on all 7 expectation files and reports per-contract scores.
+- `expectations/*.yaml` all use the new shape consistently.
+- README's 9-step demo still works verbatim.
+
+**Outcome (partial, steps 1–10 of 11):** `src/types/ir.ts` rewritten around `semanticTag: string` + `condition?: BoolExpr` + `effect: Effect` union (`payment | obligation | formula | accumulation | indemnification | default | unmodeled`). `TemporalRule` gained `direction?: "before" | "after"` + `months | years` + `graceAfter`. `currency` is now `string`. Heuristic extractor + normalizers rewritten (`extract-ir.ts`), decompiler dispatches on `effect.kind` (`decompiler.ts`), executor rekeyed on `semanticTag` (`executor.ts`), archetype validators rekeyed on `late_payment_fee` / `over_limit_fee` (`archetype-check.ts`), scenario generator updated, web dossier updated to render new shape. All 7 expectation YAMLs use the new shape. Heuristic `pnpm run run` green on credit card (3 archetypes) + lease (2). LLM demo green on WesTex. Determinism: IR / scenario / execution / English all stable under `--no-llm`. 18/21 tests pass; the 3 failing tests are pre-existing T22 matcher-stub failures unrelated to Path B. Web `pnpm build` + `pnpm typecheck` green.
+
+**Remaining (step 11):** Write `scripts/check-expectations.ts` — the YAML-to-IR validator that consumes `expectations/*.yaml` and reports per-contract pass/fail on `coverageTargets.critical` + `supporting`. Deferred as its own task; the 10 landed steps stand on their own.
+
+**Explicit non-goals:**
+
+- Fixing the LLM fee-classification bug (T21 scope — keep it separate; Path B just removes the forcing function that causes it by opening the tag vocabulary).
+- Held-out sweep (T20 scope — after Path B lands, the sweep becomes meaningful; before, it would mostly report the same degradation modes we already know).
+- Generic obligation executor (T22 — complementary, not blocked by Path B).
+
 ---
 
 ## P1 — Prove the system generalizes beyond one contract
@@ -292,7 +346,13 @@ These tasks support the hackathon's generality requirement once P0 is in place.
 
 **Outcome:** Extracted `validateArchetype` to new `src/pipeline/archetype-check.ts` with signature `(scenario, archetype, execution, ir)`. AND-form checks match the spec: late/on-time/over-limit now require fee-clause presence in IR AND a matching ledger entry (keyed by `clauseId`, not description regex); lease on-time adds rent-obligation `status=met`; partial-payment adds `endingBalance > 0`; baseline requires ≥1 ledger entry whose `clauseId` maps to a modeled clause. Restructured `generate-scenario.ts` around a single `checkScenario()` gate that executes + validates both LLM and fallback candidates; if both fail, the scenario is tagged `llm_validated_fallback` with both failure reasons in `validationNote` (honest over silent). Added `tests/archetype-check.test.ts` with positive tests (heuristic fallbacks pass on credit-card + lease) and negative tests (shape-only passes rejected without ledger consequence). 13/13 tests green. Heuristic `pnpm run run --no-llm` is clean on both samples. LLM demo correctly surfaces a real extractor bug — the current LLM IR mis-classifies every fee as `feeType: late_payment`, so the over-limit archetype's `validationNote` now honestly reads "IR does not model an over_limit fee clause." That mis-classification is a distinct extractor issue for T18's research loop to target, not a regression here.
 
-### [ ] T18 — Autoresearch-style research loop for the extractor
+### [deferred] T18 — Autoresearch-style research loop for the extractor
+
+**Deferred 2026-04-12.** The target is right — extractor robustness on unseen Markdown is the real generality concern the brief scores (held-out evaluation, 15%). But a research harness is an indirect, high-cost attack on that target, and judges never see it. T20 (held-out sweep across the six bundled samples) and T21 (fix the concrete fee-classification bug already surfaced by T17c) are direct attacks on the same goal. Revisit only if both land and the extractor's ceiling still feels too low to demo honestly.
+
+Original framing preserved below for reference.
+
+---
 
 **Goal:** Stand up a bounded, scoreable loop that lets an agent iterate on the IR extractor overnight against a held-out corpus, keeping or reverting changes based on a single metric: archetype pass rate. Modeled on [karpathy/autoresearch](https://github.com/karpathy/autoresearch). Depends on T17a **and T17c**.
 
@@ -369,6 +429,95 @@ These tasks support the hackathon's generality requirement once P0 is in place.
 - `extractor returns honest modeled/unmodeled mix on lease sample` test still passes and continues to assert `modeledClauseCount < clauseCount`.
 - `pnpm run determinism --no-llm` still reports IR / scenario / execution / English all stable on both contracts after regeneration.
 - `pnpm test` green.
+
+### [ ] T20 — Held-out sweep across the bundled sample set
+
+**Goal:** Run the full pipeline end-to-end on every contract in `contracts/` (not just WesTex + Galleria) and produce an honest, per-sample behavior report. Make "how the system degrades on unseen families" a first-class, inspectable artifact rather than something a judge has to discover by running things.
+
+**Why this matters:** The upstream brief is explicit that "judges evaluate each submission by running it on the same set of held-out Markdown contracts," and **Generality** is a scored axis (15%). Today we have artifacts for two families (credit-card, lease) and silence on the other five samples already sitting in `contracts/`. That silence hides the system's real behavior on procurement, engagement-letter, securities, employment, and service agreements — which is exactly the material a held-out evaluation will probe. Running them ourselves, honestly scoring what happens, and documenting it is the shortest path to showing generality.
+
+**Shape of the change:**
+
+- Add a `pnpm run sweep` command (or a small script under `scripts/`) that runs the existing pipeline once per sample in `contracts/` and writes to `out/_sweep/<sample>/`.
+- For each sample, record four boolean-ish outcomes in a shared `out/_sweep/sweep.json`: `extractionRan`, `scenarioGenerated`, `executionRan`, `englishRegenerated`, plus a short `notes` string naming the degradation mode (e.g. "no modeled clauses — generic unmodeled fallback only", "scenario generator defaulted to baseline archetype", "executor produced empty ledger").
+- The scoring logic reuses `archetypeFor(family)` + `validateArchetype` where applicable; for families with no archetype coverage it drops to crash-free + non-empty English.
+- Write `PLAN/HELDOUT_SWEEP.md` from the sweep output — a short table keyed by sample + family + four outcome columns + one-line notes. Regenerate, don't hand-edit.
+
+**Scope guard:**
+
+- No changes to the extractor, scenario generator, executor, or decompiler as part of this task. This is a reporting task. If the sweep surfaces clear bugs, file them as follow-up TODOs (T21-style) rather than fixing them inline.
+- No CI gating; this is a local artifact.
+- No new contract samples — use exactly what's in `contracts/` today.
+
+**Done when:**
+
+- `pnpm run sweep --no-llm` runs clean and writes `out/_sweep/<sample>/` for all 7 bundled samples plus a top-level `out/_sweep/sweep.json`.
+- `PLAN/HELDOUT_SWEEP.md` exists and tells an honest story: which samples produce modeled clauses vs. unmodeled-only output, which execute meaningfully, which degrade to "structure without computation".
+- README gains a short pointer to the sweep artifact under "Notes" or a new "Generality" subsection — one paragraph, not a pitch.
+- `pnpm test` green.
+
+### [ ] T21 — Fix LLM fee-classification: every fee tagged `feeType: late_payment`
+
+**Goal:** Fix the concrete extractor bug T17c's outcome documented — the LLM IR path classifies *every* fee clause (late fee, over-limit fee, foreign transaction fee, returned-payment fee) as `feeType: late_payment`. This breaks `credit-card / over-limit` archetype validation and silently degrades Expressiveness on the one family the repo handles best.
+
+**Why this matters:** The brief scores Expressiveness (25%) and Executability (25%) on whether the system captures and runs real contract mechanics. On the credit-card sample — the family with the most modeled clauses and the richest executor — the LLM extraction is currently collapsing distinct fee types into a single label. That's visible in `validationNote` output on the over-limit archetype and is the kind of silent-failure pitfall the brief calls out explicitly. Fixing it is a bounded prompt + validator change, not a research project.
+
+**Shape of the change:**
+
+- Tighten the LLM extraction prompt in `src/llm/openai-json.ts` so the fee-type enum is explicit (`late_payment | over_limit | foreign_transaction | returned_payment | annual | cash_advance`) and the prompt shows a one-line example per type tied to the headings the extractor commonly sees.
+- Add a post-extraction validator that rejects an IR where ≥2 distinct fee clauses share the same `feeType` without clear textual justification. On rejection, one retry with a sharpened prompt; if still bad, fall through to heuristic.
+- Keep the heuristic fee-classification path unchanged — it's the deterministic-demo path and already handles this correctly.
+- Add a focused test: run LLM extraction (stubbed) on WesTex, assert the modeled fee clauses include at least two distinct `feeType` values.
+
+**Scope guard:**
+
+- LLM-only path. Do not touch the heuristic extractor, decompiler, or executor.
+- Do not expand the `feeType` enum beyond what the existing executor + decompiler already handle — if a new type needs runtime support, that's a separate TODO.
+- No prompt-engineering spiral: one prompt revision + one retry. If that doesn't hold, report honestly and escalate, don't keep tuning.
+
+**Done when:**
+
+- LLM extraction on WesTex produces at least one `over_limit` fee clause and at least one `late_payment` fee clause, verified by a test.
+- `credit-card / over-limit` archetype validator passes in LLM mode on WesTex (no more "IR does not model an over_limit fee clause" `validationNote`).
+- Prompt + validator changes are localized to `src/llm/openai-json.ts` and `src/pipeline/extract-ir.ts`; no IR-shape or executor changes.
+- `pnpm test` green in both LLM-stubbed and heuristic modes.
+
+### [~] T22 — Generic obligation executor (hybrid event-to-clause matching)
+
+**Goal:** Give every IR — not just credit-card and lease — a real execution path. For any contract whose obligations aren't already handled by the CC or lease branches, walk each `obligation` clause, resolve its due date from the `TemporalRule`, match scenario events against obligations via a hybrid rule (explicit `metadata.clauseId` first, actor+verb+window fallback), and emit `performed` / `missed` / `partial` ledger entries plus breach records.
+
+**Why this matters:** Executability (25%) and Generality (15%) are the two biggest judged-points gaps today. Non-CC/non-lease contracts extract fine, round-trip English fine, but the executor currently falls through into credit-card machinery and either produces nothing meaningful or emits nonsense driven by CC event types the scenario doesn't have. One generic path converts every `[UNMODELED]`-dominant execution into a real performed/breached computation across all five other bundled samples and any held-out contract in those shapes.
+
+**Shape of the change:**
+
+- **New isolated matcher** (`src/core/match-obligation.ts`, new): pure function `matchEventToObligation(event, obligation, resolvedDueDate, windowDays) -> { matched, reason }`. `reason` ∈ `"clauseId" | "actor+verb+window" | "no-match"`. Hybrid rule: explicit `event.metadata.clauseId === obligation.id` wins; otherwise accept if `event.metadata.actor === obligation.actor` AND event type fits the obligation's action verb (via small `VERB_TO_EVENT_TYPES` map: `pay→payment`, `deliver→delivery`, `notify→notice`) AND `|event.date - resolvedDueDate| <= windowDays` (default 7).
+
+- **Due-date resolution from `TemporalRule`:** `on_date` → use `value`; `calendar_days` with `anchor` → `contractStart + value`; `business_days` → same with dumb Sat/Sun skip. `contractStart` read from `scenario.initialState.contractStart`, fallback to earliest event date.
+
+- **Executor branch** (`src/core/executor.ts`): new third path `executeGenericObligations(ir, scenario, events)` below the lease branch. Add a discriminator `isCreditCardScenario(ir, scenario)` (presence of `clause.obligation.minimum_payment` OR CC-specific fee) so the existing CC machinery runs only when the IR actually is CC. Generic path emits one `statement` ledger entry per obligation announcing the due date, one `performed` or `missed` entry after matching, and a `Breach { type: "obligation_missed" }` for unmatched obligations.
+
+- **ScenarioEvent type extension** (`src/types/scenario.ts`): add `"delivery"` and `"action"` to `ScenarioEventType`. `"action"` is the catch-all for obligations whose verb doesn't map to an existing type; the matcher falls back to `metadata.clauseId` for these.
+
+- **Tests** (`tests/generic-executor.test.ts`, new): four cases for the matcher in isolation (explicit clauseId, actor+verb fallback inside window, out-of-window no-match, no-obligations trivial) plus one end-to-end test that runs the generic executor on a minimal procurement-shaped IR and asserts a non-empty ledger with at least one `performed` and one `missed` entry.
+
+**Scope guard:**
+
+- Do not touch the CC or lease branches. Only add the new generic path and the discriminator.
+- Do not add new `Breach["type"]` values beyond `"obligation_missed"` for this task. Rich breach taxonomy is a follow-up.
+- No business-day holiday calendar; weekend skip only. Documented limitation.
+- The 7-day match window is a single constant. Per-family tuning is out of scope.
+- No extractor or decompiler changes. Decompiler already honors `modeled: false`; generic obligations are already `modeled: true` in the IR.
+
+**Done when:**
+
+- `src/core/match-obligation.ts` exists, exports `matchEventToObligation`, and has ≥4 unit tests covering the hybrid rule.
+- `executeGenericObligations` runs on any IR without CC or lease markers and produces a non-empty ledger.
+- `isCreditCardScenario` discriminator keeps existing CC artifacts byte-identical (determinism hashes unchanged for WesTex).
+- Lease artifacts stay byte-identical (determinism hashes unchanged for Galleria).
+- End-to-end test shows a synthetic procurement IR + scenario producing at least one `performed` and one `missed` obligation in execution.
+- `pnpm test` + `pnpm demo` green.
+
+**Explicit non-goals:** cure periods, definitions resolution, cross-references between clauses, rich breach taxonomy, multi-obligation scheduling (one obligation → one due date → one match-or-miss).
 
 ---
 

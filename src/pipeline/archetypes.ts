@@ -78,24 +78,29 @@ export function contractFamily(ir: ContractIR): ContractFamily {
     hasModeledClause(
       ir,
       (clause) =>
-        clause.kind === "fee" &&
-        (clause.feeType === "late_payment" || clause.feeType === "over_limit"),
+        clause.effect.kind === "payment" &&
+        (clause.semanticTag === "late_payment_fee" ||
+          clause.semanticTag === "over_limit_fee"),
     ) ||
     hasModeledClause(
       ir,
       (clause) =>
-        clause.kind === "formula" && clause.outputVar === "minimum_payment_due",
+        clause.effect.kind === "formula" &&
+        clause.effect.outputVar === "minimum_payment_due",
     );
   const hasLeaseSignals =
     title.includes("lease") ||
     hasModeledClause(
       ir,
       (clause) =>
-        clause.kind === "obligation" && clause.id === "clause.obligation.monthly_rent",
+        clause.effect.kind === "obligation" &&
+        clause.id === "clause.obligation.monthly_rent",
     ) ||
     hasModeledClause(
       ir,
-      (clause) => clause.kind === "formula" && clause.outputVar === "monthly_rent_due",
+      (clause) =>
+        clause.effect.kind === "formula" &&
+        clause.effect.outputVar === "monthly_rent_due",
     );
 
   if (hasCreditSignals) return "credit_card";

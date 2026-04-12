@@ -1,0 +1,296 @@
+# Expected IR content for the OneAmerica / MBSC Service Agreement.
+# Not a hackathon-spec contract (extra sample); included to broaden
+# the expectation set to financial-services administrative contracts.
+#
+# Written in Path B's new shape.
+
+contractId: oneamerica-mbsc-service-agreement-2015
+contractFile: contracts/OneAmerica-MBSC-service-agreement-2015.md
+family: service-agreement
+
+expectedParties:
+  - role: service_provider
+    name: "One America Securities (Indiana)"
+  - role: distributor
+    name: "MBSC Securities Corporation (New York)"
+  - role: funds
+    name: "Registered investment companies identified on Schedule A (the Funds)"
+    note: >
+      "The Funds" is an open list tied to Schedule A (not reproduced
+      in the Markdown). The IR treats it as a single collective party;
+      individual funds would be enumerated in scenario data.
+
+# --- Modeled expectations --------------------------------------------
+expectedClauses:
+  - id: administrative-fees-payment
+    intent: "MBSC and the Funds severally pay the Service Provider Administrative Fees per Schedule C."
+    sourceQuote: "MBSC and the Funds severally agree to pay the Service Provider the fees described in Schedule C (\"Administrative Fees\")"
+    mustMatch:
+      semanticTag: administrative_fees
+      modeled: true
+      effect:
+        kind: payment
+        payer: distributor
+        payee: service_provider
+        amount:
+          op: var
+          name: "administrativeFees"
+          # Schedule C is external to the Markdown body. The IR stores
+          # the variable; scenario data populates it. Honest but lossy.
+
+  - id: fee-dispute-window
+    intent: "Service Provider must notify MBSC of any fee-payment dispute within 30 days of receipt."
+    sourceQuote: "notice of and the dollar amount of any and all disputes pertaining to any fee payment made under the terms of this Agreement within 30 days of receipt of the fee payment"
+    mustMatch:
+      semanticTag: fee_dispute_notice
+      modeled: true
+      effect:
+        kind: obligation
+        actor: service_provider
+        action: "give written notice to MBSC of any fee-payment dispute"
+        due:
+          type: calendar_days
+          value: 30
+          anchor: "fee_payment_received"
+
+  - id: voluntary-termination-six-months
+    intent: "Any party may terminate new-share sales (and previously sold shares separately) on 6 months' advance written notice."
+    sourceQuote: "at the option of the Service Provider, MBSC or a Fund upon six months' advance written notice"
+    mustMatch:
+      semanticTag: voluntary_termination_notice
+      modeled: true
+      effect:
+        kind: obligation
+        actor: any_party
+        action: "give written notice of termination"
+        due:
+          type: months
+          value: 6
+          anchor: "termination_effective_date"
+          direction: before       # <-- depends on TemporalRule direction fix
+
+  - id: material-breach-cure-period
+    intent: "Material breach terminates the Agreement unless cured within 10 days to the reasonable satisfaction of the aggrieved party."
+    sourceQuote: "is in material breach of this Agreement unless the party in breach cures the breach to the reasonable satisfaction of the party alleging breach within 10 days"
+    mustMatch:
+      semanticTag: material_breach_termination
+      modeled: true
+      condition:
+        op: eq
+        left: "materialBreachDeclared"
+        right: true
+      effect:
+        kind: default
+        consequences:
+          - "Agreement terminates if breach not cured within 10 days"
+          - "Aggrieved party gains right to terminate by written notice"
+
+  - id: indemnity-notice-window
+    intent: "Indemnitee must notify indemnitor of an indemnification claim within 7 days of service of first legal process (60 days if indemnitor is also a party)."
+    sourceQuote: "notify the indemnitor of the commencement thereof in accordance with the provisions of Section 16 hereof within seven (7) days after the summons or other first legal process shall have been served"
+    mustMatch:
+      semanticTag: indemnity_notice_obligation
+      modeled: true
+      effect:
+        kind: obligation
+        actor: indemnitee
+        action: "notify indemnitor of commencement of action"
+        due:
+          type: calendar_days
+          value: 7
+          anchor: "summons_served"
+
+  - id: service-provider-indemnifies-mbsc
+    intent: "Service Provider indemnifies MBSC, Funds, advisers, administrators, and their personnel against losses arising from Services, negligence/willful misconduct, or material breach."
+    sourceQuote: "The Service Provider agrees to indemnify and hold harmless MBSC, the Funds, the Funds' investment advisers, the Funds' administrators, and each of their directors, officers, employees, agents"
+    mustMatch:
+      semanticTag: service_provider_indemnifies_distributor_and_funds
+      modeled: true
+      effect:
+        kind: indemnification
+        indemnifier: service_provider
+        indemnitee: "MBSC, Funds, their investment advisers, administrators, and their personnel"
+        scope: "losses, claims, damages, liabilities, or expenses arising from (i) provision of Administrative Services, (ii) negligence or willful misconduct, (iii) material breach of Agreement, or (iv) breach of a representation/warranty/covenant"
+        carveOuts: []
+
+  - id: mbsc-indemnifies-service-provider
+    intent: "MBSC indemnifies the Service Provider against losses arising from MBSC's material breach of Agreement or of reps/warranties/covenants."
+    sourceQuote: "MBSC agrees to indemnify and hold harmless the Service Provider"
+    mustMatch:
+      semanticTag: distributor_indemnifies_service_provider
+      modeled: true
+      effect:
+        kind: indemnification
+        indemnifier: distributor
+        indemnitee: service_provider
+        scope: "losses, claims, damages, liabilities, or expenses arising from MBSC's material breach of Agreement or of a representation/warranty/covenant"
+        carveOuts: []
+
+  - id: late-trading-cutoff-cash
+    intent: "Instructions received before NYSE close (currently 4:00 p.m. ET) on a Business Day are executed at that day's NAV; otherwise next Business Day's NAV."
+    sourceQuote: "to be treated as received prior to the close of trading on such Business Day (currently 4:00p.m. Eastern Time)"
+    mustMatch:
+      semanticTag: late_trading_cutoff
+      modeled: true
+      effect:
+        kind: obligation
+        actor: service_provider
+        action: "treat instructions received by 4:00 p.m. ET as same-Business-Day orders; later orders as next Business Day"
+        due:
+          type: on_date
+          value: "4:00 PM ET"
+    note: >
+      Time-of-day cutoffs are a new temporal kind this contract
+      introduces. Path B's `TemporalRule` supports "on_date" as a
+      string anchor; "4:00 PM ET" is a string. Works by convention
+      but the semantics are looser than the calendar_days / months
+      cases. Flag as shape finding.
+
+# --- Honest-partial expectations -------------------------------------
+expectedUnmodeled:
+  - intent: "Termination on adverse legislation that caps Dreyfus's advisory/admin fee below Administrative Fees."
+    sourceHeading: "§14(b)"
+    note: "Regulatory-trigger termination. Conditional but not expressible without a regulation-feed primitive."
+
+  - intent: "Termination on FINRA/SEC formal proceedings against any party."
+    sourceHeading: "§14(c)"
+
+  - intent: "Termination on MBSC Distribution Agreement termination (with substantially-similar-replacement carve-out)."
+    sourceHeading: "§14(d)"
+
+  - intent: "Termination on Dreyfus Investment Advisory/Administration Agreement termination (with similar carve-out)."
+    sourceHeading: "§14(e)"
+
+  - intent: "Suspension of new sales on Fund's market/economic/political judgment, SEC stop orders, or missing registration prospectus."
+    sourceHeading: "§14(f)"
+
+  - intent: "Termination on unauthorized assignment of Agreement."
+    sourceHeading: "§14(g)"
+
+  - intent: "Late Trading Procedures full implementation, NSCC Fund/Serv clearing specifics, AML/OFAC, and anti-fraud monitoring."
+    sourceHeading: "§2"
+
+  - intent: "18+ representations, warranties, and covenants (§18 and Schedule B)."
+    sourceHeading: "§18 and Schedule B"
+
+  - intent: "Confidentiality obligations covering secret/confidential information including product plans, marketing strategies, customer and investor lists."
+    sourceHeading: "§11 Confidentiality"
+
+  - intent: "Insurance and fidelity bonding requirements (customary industry levels)."
+    sourceHeading: "§12 Insurance and Bonding"
+
+  - intent: "Use of MBSC name / Dreyfus name restrictions."
+    sourceHeading: "§10 Use of MBSC Name"
+
+  - intent: "Error correction procedure: Service Provider notifies within 3 Business Days and corrects by crediting overpayment or charging underpayment."
+    sourceHeading: "Around line 994"
+    needs: "Error-correction primitive. Similar shape to the lease's reconciliation clause."
+
+  - intent: "Assignment restrictions and permitted assignee scope."
+    sourceHeading: "§21 Assignment"
+
+  - intent: "Survival of §§4, 10, 11, 12, 15 after termination."
+    sourceHeading: "§22 Survival"
+
+  - intent: "Notices, governing law, entire-agreement, amendment-by-writing boilerplate (§§16, 19, 20, 23)."
+    sourceHeading: "§§16–23"
+
+# --- Real source ambiguities -----------------------------------------
+knownConflicts:
+  - between:
+      - "§13: 'MBSC and the Funds severally agree to pay the Service Provider the fees described in Schedule C (\"Administrative Fees\")'"
+      - "Schedule C is not reproduced in the Markdown body"
+    resolution: >
+      The load-bearing fee schedule is not in the source text as
+      provided. An honest IR captures the fee as a variable
+      (`administrativeFees`) and flags that the fee-schedule artifact
+      is external. Scenario data must supply a dollar value.
+
+  - between:
+      - "§14(a) 6-month termination notice"
+      - "§14(h) 10-day cure-period-then-terminate"
+    resolution: >
+      These coexist: (a) is voluntary termination requiring 6 months'
+      notice; (h) is breach-triggered termination with only 10 days'
+      cure. Not a contradiction, but a well-formed scenario must pick
+      which pathway applies per event.
+
+  - between:
+      - "§14(d): termination on Distribution Agreement end 'shall not be deemed to apply if, contemporaneously with such termination, a new Distribution Agreement containing substantially similar terms is entered into'"
+      - "\"Substantially similar\" is undefined"
+    resolution: >
+      A standard legal fuzzy qualifier. No IR primitive expresses
+      "substantially similar." An honest extractor captures the
+      literal clause as unmodeled or as an obligation with a note.
+
+coverageTargets:
+  critical:
+    - administrative-fees-payment
+    - voluntary-termination-six-months
+    - material-breach-cure-period
+    - service-provider-indemnifies-mbsc
+    - mbsc-indemnifies-service-provider
+  supporting:
+    - fee-dispute-window
+    - indemnity-notice-window
+    - late-trading-cutoff-cash
+
+# --- Path B shape stress-test findings --------------------------------
+formatStressTest:
+  - finding: "Externally-referenced schedules lose fidelity in the IR."
+    status: documented
+    detail: >
+      Schedule A (Funds list), Schedule B (Services), Schedule C (Fees)
+      are all referenced but not in the Markdown body. Under Path B,
+      the IR has no way to encode "see Schedule C." The honest encoding
+      is `amount: var("administrativeFees")` — an opaque variable the
+      scenario must populate. Not a shape bug; a documentation
+      convention.
+
+  - finding: "Indemnification effect now validated on 3 distinct contracts."
+    status: confirmed
+    detail: >
+      Masterworks (asymmetric two-way), Galleria (tenant-to-landlord
+      one-way), and OneAmerica (mutual two-way) all fit the
+      `indemnification` effect shape cleanly. No strain. This effect
+      kind is pulling its weight.
+
+  - finding: "Time-of-day cutoffs strain `TemporalRule`."
+    status: minor-shape-fix
+    detail: >
+      The 4:00 p.m. ET cutoff in §2(b) is a time-of-day, not a
+      date or duration. `TemporalRule { type: "on_date", value: string }`
+      can hold "4:00 PM ET" as a string, but the semantics are
+      ambiguous. For now, the string convention works; if another
+      contract needs fine-grained time-of-day logic, consider adding
+      `type: "time_of_day"`.
+
+  - finding: "Multi-triggered termination is awkward."
+    status: known-gap
+    detail: >
+      §14 lists 8 distinct termination triggers (a–h), each with
+      different notice rules. Under Path B, the cleanest encoding is
+      8 separate `default` clauses, one per trigger, each with its
+      own `semanticTag: termination_on_<reason>`. That is what the
+      expectation file does. It works but makes `default` feel
+      granular. An alternative aggregator would be nice but not
+      blocking.
+
+  - finding: "`any_party` as an actor value is a convention, not a primitive."
+    status: minor-syntax
+    detail: >
+      §14(a) allows ANY of the three parties to terminate. The
+      expectation file encodes this as `actor: "any_party"`, a
+      free-string convention. Path B's Party.role is open-string so
+      this works. If held-out contracts increase the frequency of
+      multi-party triggers, consider a special sentinel or role
+      enumeration.
+
+  - finding: "`payment` with opaque amount is honest partial coverage."
+    status: confirmed
+    detail: >
+      The administrative-fee clause's amount is `var("administrativeFees")`
+      with no concrete expression — because the source doesn't have
+      one. Under Path B, this is clean: the executor can still fire
+      the payment clause when the scenario supplies the variable.
+      Compare to the broken alternative of fabricating an amount.

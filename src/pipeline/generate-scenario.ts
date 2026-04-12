@@ -93,26 +93,27 @@ const scenarioJsonSchema: Record<string, unknown> = {
 
 function aprFromIr(ir: ContractIR): number {
   const aprClause = ir.clauses.find(
-    (c): c is Extract<ContractIR["clauses"][number], { kind: "formula" }> =>
-      c.kind === "formula" && c.outputVar === "apr_nominal",
+    (c) => c.effect.kind === "formula" && c.effect.outputVar === "apr_nominal",
   );
-  if (!aprClause) return 7.9;
-  if (aprClause.expr.op === "const" && typeof aprClause.expr.value === "number") {
-    return aprClause.expr.value;
+  if (!aprClause || aprClause.effect.kind !== "formula") return 7.9;
+  const expr = aprClause.effect.expr;
+  if (expr.op === "const" && typeof expr.value === "number") {
+    return expr.value;
   }
   return 7.9;
 }
 
 function monthlyRentFromIr(ir: ContractIR): number {
   const rentFormula = ir.clauses.find(
-    (clause): clause is Extract<ContractIR["clauses"][number], { kind: "formula" }> =>
-      clause.kind === "formula" &&
+    (clause) =>
+      clause.effect.kind === "formula" &&
       clause.modeled &&
-      clause.outputVar === "monthly_rent_due" &&
-      clause.expr.op === "const" &&
-      typeof clause.expr.value === "number",
+      clause.effect.outputVar === "monthly_rent_due" &&
+      clause.effect.expr.op === "const" &&
+      typeof clause.effect.expr.value === "number",
   );
-  return rentFormula?.expr.value ?? 75000;
+  if (!rentFormula || rentFormula.effect.kind !== "formula") return 75000;
+  return rentFormula.effect.expr.value ?? 75000;
 }
 
 function irContextAssumptions(ir: ContractIR, archetype: Archetype): string[] {

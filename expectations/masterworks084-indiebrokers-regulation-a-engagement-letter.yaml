@@ -1,0 +1,267 @@
+# Expected IR content for the Masterworks 084 / IndieBrokers
+# Regulation A+ engagement letter.
+#
+# This contract is the second authored expectation file. It is included
+# specifically to stress-test assumptions made while drafting the
+# WesTex credit-card expectations. Findings from this exercise (issues
+# with the IR type system, the archetype layer, and clause kinds) are
+# captured under `formatStressTest` at the bottom.
+
+contractId: masterworks084-indiebrokers-regulation-a-engagement-letter
+contractFile: contracts/Masterworks084-IndieBrokers-Regulation-A-engagement-letter.md
+family: engagement-letter
+
+# --- Parties ----------------------------------------------------------
+# This contract has THREE parties, not two. Our IR's `Party[]` supports
+# this structurally, but our executor's family-keyed paths
+# (credit-card, lease) do not think in 3-party terms.
+expectedParties:
+  - role: client
+    name: "Masterworks 084, LLC"
+  - role: financial_adviser
+    name: "Independent Brokerage Solutions LLC"
+  - role: payer
+    name: "Masterworks Investor Services, LLC"
+    note: >
+      The payer is a separate legal entity from the Client and is the
+      party actually on the hook for compensation (§3(e)). An executor
+      that assumes two-party obligation graphs will silently mis-key
+      who pays whom.
+
+# --- Modeled expectations --------------------------------------------
+# Clauses the extractor SHOULD capture as `modeled: true` and the
+# executor SHOULD be able to compute against a scenario.
+expectedClauses:
+  - id: sales-commission-formula
+    intent: "Sales commission is up to 3% of total equity capital raised, paid by Masterworks (not Client)."
+    sourceQuote: "variable sales commission and finder’s fee of up to 3% of the total dollar amount of equity capital raised"
+    mustMatch:
+      semanticTag: sales_commission
+      modeled: true
+      effect:
+        kind: formula
+        outputVar: salesCommission
+        exprShape: "mul(const(0.03), var(equityCapitalRaised))"
+    note: >
+      "Up to 3%" means this is a CAP, not a fixed rate. Path B's
+      `payment` and `formula` effects both carry `cap?: Expr`; an IR that
+      honors that would set `cap: mul(const(0.03), var(equityCapitalRaised))`
+      while the amount expression tracks the actually-claimed commission.
+
+  - id: fixed-monthly-compensation
+    intent: "IndieBrokers receives $15,000/month for ancillary support services for up to 25 representatives."
+    sourceQuote: "$15,000 per month for ancillary support services provided to up to and including twenty five (25) representatives"
+    mustMatch:
+      semanticTag: recurring_support_fee
+      modeled: true
+      effect:
+        kind: formula
+        outputVar: fixedMonthlyCompensation
+        exprShape: "const(15000)"
+    note: >
+      Paid pursuant to a separate agreement. The §3(b) text calls it
+      "not tied specifically to this Offering" — so the IR either
+      captures this as an unconditional monthly obligation or marks it
+      modeled: false and explains why.
+
+  - id: expense-reimbursement-cap
+    intent: "Expense reimbursement is capped at 0.20% of aggregate gross offering proceeds."
+    sourceQuote: "Such reimbursements shall be capped at 0.20% of the aggregate gross offering proceeds"
+    mustMatch:
+      semanticTag: expense_reimbursement_cap
+      modeled: true
+      effect:
+        kind: formula
+        outputVar: expenseReimbursementCap
+        exprShape: "mul(const(0.0020), var(grossOfferingProceeds))"
+
+  - id: underwriting-compensation-cap
+    intent: "Total underwriting compensation from all sources cannot equal or exceed 10% of gross offering proceeds (FINRA rule)."
+    sourceQuote: "will not exceed an amount that equals ten percent (10%) of the gross proceeds of the offering"
+    mustMatch:
+      semanticTag: underwriting_compensation_cap
+      modeled: true
+      effect:
+        # Format strain: this is a CONSTRAINT, not a formula. No Path B
+        # `constraint` kind. Emitting it as a formula computes the cap
+        # amount but cannot enforce "total ≤ cap".
+        kind: formula
+        outputVar: underwritingCompensationCap
+        exprShape: "mul(const(0.10), var(grossOfferingProceeds))"
+
+  - id: term-initial-period
+    intent: "Initial term is 12 months from the effective date."
+    sourceQuote: "for twelve (12) months, automatically renewable thereafter for monthly periods"
+    mustMatch:
+      semanticTag: engagement_term
+      modeled: true
+      effect:
+        kind: obligation
+        actor: all_parties
+        action: "observe the engagement term"
+        due:
+          type: months
+          value: 12
+          anchor: effective_date
+          direction: after
+
+  - id: termination-notice
+    intent: "Either party may terminate with 30 days' prior written notice."
+    sourceQuote: "by either party, upon thirty (30) days’ prior written notice"
+    mustMatch:
+      semanticTag: termination_notice
+      modeled: true
+      effect:
+        kind: obligation
+        actor: any_party
+        action: "give written notice of termination"
+        due:
+          type: calendar_days
+          value: 30
+          anchor: termination_effective_date
+          direction: before
+
+  - id: payment-default-termination
+    intent: "Financial Adviser may terminate if Client fails to pay within 30 days of due date."
+    sourceQuote: "Client fails to pay any amount due hereunder within thirty (30) days of that due date"
+    mustMatch:
+      semanticTag: payment_default
+      modeled: true
+      effect:
+        kind: default
+        triggerKeywords:
+          - "fails to pay"
+          - "thirty (30) days"
+
+# --- Honest-partial expectations -------------------------------------
+# Clauses we do NOT expect to model but DO expect the IR to acknowledge
+# as `modeled: false` stubs rather than silently drop.
+expectedUnmodeled:
+  - intent: "Nine enumerated duties of Financial Adviser in the offering process (§2 a–i)."
+    sourceHeading: "Offering Process"
+    note: >
+      Most of these lack concrete deadlines ("as it deems appropriate",
+      "to its satisfaction"), so they do not fit the
+      `ObligationClause.due: TemporalRule` shape. They should appear as
+      unmodeled obligations with the source text preserved.
+
+  - intent: "Fourteen Client representations and warranties (§5 a–n)."
+    sourceHeading: "Certain Covenants, Representations and Warranties of Client"
+
+  - intent: "Joint & several indemnification by Client + Masterworks of Financial Adviser (§6)."
+    sourceHeading: "Indemnification of Financial Adviser"
+    note: >
+      No clause kind represents indemnification. The `default` kind is
+      closest semantically (trigger + consequences) but the consequences
+      here are legal reimbursement obligations, not contract breach.
+
+  - intent: "Asymmetric indemnification of Client by Financial Adviser (only on gross negligence / willful misconduct) (§7)."
+    sourceHeading: "Indemnification of Client"
+
+  - intent: "Best-efforts limitation — Financial Adviser does not guarantee success."
+    sourceHeading: "Scope of Engagement"
+
+  - intent: "FINRA / Regulation A+ / KYC / AML / suitability regulatory obligations."
+    sourceHeading: "Offering Process"
+
+  - intent: "Segregated investor-funds account requirement."
+    sourceHeading: "Scope of Engagement"
+
+  - intent: "Six-month public-reference lockup after placement."
+    sourceHeading: "Certain Covenants, Representations and Warranties of Client"
+
+  - intent: "Mutual confidentiality with five carve-outs (§10)."
+    sourceHeading: "Confidential Information"
+
+  - intent: "FINRA arbitration in New York; jury-trial waiver."
+    sourceHeading: "Arbitration"
+
+  - intent: "Governing law: New York State."
+    sourceHeading: "Interpretation and Enforcement; Governing Law"
+
+  - intent: "No assignment without prior written consent."
+    sourceHeading: "Successors and Assigns"
+
+  - intent: "Survival: fees, confidentiality, indemnification survive termination (§9 tail)."
+    sourceHeading: "Term; Termination; Survival of Provisions"
+
+# --- Real source ambiguities -----------------------------------------
+knownConflicts:
+  - between:
+      - "§3(b) says fixed compensation 'is not tied specifically to this Offering'"
+      - "§3(b) also says 'a portion of which is deemed to be underwriting compensation for this Offering'"
+    resolution: >
+      Both are simultaneously true per FINRA underwriting-allocation
+      rules. An honest IR should either model the full $15k/month and
+      note the allocation, or mark it modeled: false and name the
+      ambiguity. Silently dropping either reading is wrong.
+
+  - between:
+      - "§3(d): 'total... will not exceed an amount that equals ten percent'"
+      - "§3(a): sales commission is up to 3%"
+    resolution: >
+      These are compatible but interact: the 3% sales commission plus
+      allocated fixed compensation plus reimbursements must sum below
+      10%. No clause kind represents this cross-clause invariant.
+
+# --- What scoring looks like -----------------------------------------
+coverageTargets:
+  critical:
+    - sales-commission-formula
+    - expense-reimbursement-cap
+    - termination-notice
+  supporting:
+    - fixed-monthly-compensation
+    - underwriting-compensation-cap
+    - term-initial-period
+    - payment-default-termination
+
+# --- Format stress-test findings -------------------------------------
+# What this contract revealed about the expectation format and the
+# underlying IR types. These are diagnostic notes, not assertions.
+formatStressTest:
+  - finding: "`FeeClause.feeType` enum is entirely inapplicable."
+    detail: >
+      None of sales commission, monthly retainer, expense reimbursement,
+      or underwriting cap fit `late_payment | over_limit |
+      returned_payment | foreign_txn`. All four load-bearing monetary
+      clauses in this contract have to be modeled as `formula` kind
+      instead, which strips the semantic tag that says "this is
+      compensation, not a fee." The type leak identified in the
+      WesTex review is confirmed: `feeType` must be open, or fees must
+      be expressible as tagged formulas.
+
+  - finding: "No clause kind for constraints / caps / invariants."
+    detail: >
+      The 10% FINRA underwriting cap is a cross-clause invariant. The
+      0.20% reimbursement cap and the 3% commission cap are per-clause
+      upper bounds. `formula` can compute the cap amount but cannot
+      enforce "total ≤ cap." This is a real modeling gap on any
+      contract with rate caps, not just this one.
+
+  - finding: "No clause kind for indemnification."
+    detail: >
+      §§6 and 7 are structured (trigger → party → reimbursement scope →
+      carve-outs) and could be modeled, but our four kinds don't have a
+      slot for it. `default` is the closest but misleading.
+
+  - finding: "`TemporalRule` has no `months` or `years` unit."
+    detail: >
+      "12 months" becomes 365 calendar_days, which is wrong for month-
+      boundary semantics. "Six months" in the lockup, "twelve months"
+      in the term, "monthly" in auto-renewal — all lose fidelity.
+
+  - finding: "Three-party obligations."
+    detail: >
+      The compensation is payable by the Payer (Masterworks Investor
+      Services), not the Client. Our IR supports `Party[]` and
+      `obligation.actor` as open strings, so this is structurally fine,
+      but no executor path understands a 3-party payment graph.
+
+  - finding: "Best-efforts / reasonableness qualifiers are not modelable."
+    detail: >
+      Most obligations in §2 and §5 are qualified by "reasonably,"
+      "to its satisfaction," "as deemed appropriate." These are
+      genuinely unmodelable without a legal-judgment layer. The
+      expectation file correctly flags them as `expectedUnmodeled`,
+      which is the honest answer.

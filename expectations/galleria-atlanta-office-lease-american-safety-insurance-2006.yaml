@@ -1,0 +1,357 @@
+# Expected IR content for the Galleria Atlanta office lease.
+# Hackathon brief tags this "High complexity: rent escalation,
+# maintenance, termination."
+#
+# FIRST FILE WRITTEN IN PATH B'S NEW SHAPE: every expectation uses
+# `semanticTag` + `effect.kind`, not `kind: fee | formula | obligation`.
+# Shape issues discovered while drafting are captured under
+# `formatStressTest` at the bottom.
+
+contractId: galleria-atlanta-office-lease-american-safety-insurance-2006
+contractFile: contracts/Galleria-Atlanta-office-lease-American-Safety-Insurance-2006.md
+family: lease
+
+expectedParties:
+  - role: landlord
+    name: "OTR (Ohio general partnership)"
+  - role: tenant
+    name: "American Safety Insurance Services, Inc."
+
+# --- Modeled expectations --------------------------------------------
+expectedClauses:
+  - id: lease-term
+    intent: "Lease term is 86 months from the Rental Start Date."
+    sourceQuote: "The term of the Lease shall be for eighty-six (86) months"
+    mustMatch:
+      semanticTag: lease_term
+      modeled: true
+      effect:
+        kind: obligation
+        actor: tenant
+        action: "occupy premises through the lease term"
+        due:
+          type: months
+          value: 86
+          anchor: "rental_start_date"
+
+  # --- Stepped rent schedule — seven separate clauses -----------------
+  # SHAPE ISSUE #1 (see formatStressTest): the rent is a 7-row step-up
+  # table, not a formula. The honest representation under Path B is
+  # either (a) seven conditional payment clauses, each gated by a
+  # date range, or (b) a new `schedule` effect kind. (a) is expressed
+  # below because Path B as we've defined it has no schedule
+  # primitive. It works but it's ugly.
+  - id: monthly-rent-step-1
+    intent: "Monthly rent is $75,360.54 from Rental Start Date through 03/31/08."
+    sourceQuote: "Rental Start Date -        $19.25           $904,326.50      $75,360.54"
+    mustMatch:
+      semanticTag: base_rent
+      modeled: true
+      condition:
+        op: and
+        args:
+          - { op: gte, left: "currentDate", right: "rental_start_date" }
+          - { op: lte, left: "currentDate", right: "2008-03-31" }
+      effect:
+        kind: payment
+        payer: tenant
+        payee: landlord
+        amount: { op: const, value: 75360.54 }
+
+  - id: monthly-rent-step-2
+    intent: "Monthly rent is $77,826.89 from 04/01/08 through 03/31/09."
+    sourceQuote: "04/01/08 - 03/31/09        $19.88           $933,922.64      $77,826.89"
+    mustMatch:
+      semanticTag: base_rent
+      modeled: true
+      effect:
+        kind: payment
+        amount: { op: const, value: 77826.89 }
+
+  - id: monthly-rent-step-3-through-7
+    intent: "Annual 3.3% step-ups through end of term: $80,371.53, $82,994.47, $85,695.70, $88,475.23, $91,333.06."
+    sourceQuote: "04/01/09 - 03/31/10        $20.53           $964,458.34      $80,371.53"
+    mustMatch:
+      semanticTag: base_rent
+      modeled: true
+      # Abbreviated — expectation covers existence of each row as
+      # its own `payment` clause. Full enumeration omitted for brevity.
+
+  - id: late-rent-fee
+    intent: "5% late charge on any rent or payment unpaid 5 days after due."
+    sourceQuote: "if rent or any other payment due hereunder from Tenant to Landlord remains unpaid five (5) days after said amount is due, the amount of such unpaid rent or other payment shall be increased by a late charge... equal to five percent (5%)"
+    mustMatch:
+      semanticTag: late_rent_fee
+      modeled: true
+      condition:
+        op: gt
+        left: "daysPastDue"
+        right: 5
+      effect:
+        kind: payment
+        payer: tenant
+        payee: landlord
+        amount:
+          op: mul
+          args:
+            - { op: const, value: 0.05 }
+            - { op: var, name: "delinquentAmount" }
+
+  - id: operating-expense-pass-through
+    intent: "Tenant pays Proportionate Share of (current-year Direct Operating Expenses − Base Year 2007 DOE)."
+    sourceQuote: "Tenant shall pay to Landlord as additional rent Tenant's proportionate share of the amount by which the Direct Operating Expenses... incurred by Landlord in the operation of the Building during each calendar year of the Lease Term exceeds the Direct Operating Expenses for the base year 2007"
+    mustMatch:
+      semanticTag: operating_expense_pass_through
+      modeled: true
+      effect:
+        kind: formula
+        outputVar: tenantProportionateShareOfOperatingExpenses
+        expr:
+          op: mul
+          args:
+            - { op: var, name: "tenantProportionateShare" }
+            - op: sub
+              args:
+                - { op: var, name: "currentYearDirectOperatingExpenses" }
+                - { op: var, name: "baseYearDirectOperatingExpenses" }
+    note: >
+      The `tenantProportionateShare` is defined as premises_sqft / total_building_sqft = 46,978 / total. The base year is 2007. The 95%-occupancy gross-up is an additional rule not captured by this single expression.
+
+  - id: security-deposit-payment
+    intent: "Tenant pays $77,826.89 security deposit at lease execution."
+    sourceQuote: "The Security Deposit in the amount of Seventy Seven Thousand Eight Hundred Twenty Six and 89/100 Dollars ($77,826.89)"
+    mustMatch:
+      semanticTag: security_deposit
+      modeled: true
+      effect:
+        kind: payment
+        payer: tenant
+        payee: landlord
+        amount: { op: const, value: 77826.89 }
+
+  - id: payment-default-trigger
+    intent: "Default on rent: failure to pay within 5 days of written notice (with 2-notice-per-year cap)."
+    sourceQuote: "Tenant shall fail to pay when or before due any sum of money... and such failure shall continue for a period of five (5) days after written notice of such failure from Landlord to Tenant"
+    mustMatch:
+      semanticTag: payment_default
+      modeled: true
+      effect:
+        kind: default
+        consequences:
+          - "Landlord may terminate the Lease"
+          - "Landlord may terminate Tenant's right to possession without terminating the Lease"
+          - "Landlord may recover accrued damages plus liquidated damages for the balance of the term"
+          - "Security deposit becomes due and payable to Landlord"
+
+  - id: renewal-option
+    intent: "One 60-month renewal option; 180 days prior written notice required; conditional on tenant not being in default."
+    sourceQuote: "Tenant shall have one (1) option to renew this Lease for the entire Premises for an additional sixty (60) month term with one hundred eighty (180) days prior written notice"
+    mustMatch:
+      semanticTag: renewal_option
+      modeled: true
+      condition:
+        op: not
+        args:
+          - { op: eq, left: "tenantInDefault", right: true }
+      effect:
+        kind: obligation
+        actor: tenant
+        action: "give written notice of intent to renew"
+        due:
+          type: calendar_days
+          value: 180
+          anchor: "lease_end_date_minus"   # <-- SHAPE ISSUE #2: anchor pointing backward
+
+  - id: landlord-indemnification
+    intent: "Tenant indemnifies Landlord against claims arising from tenant's acts or omissions on the Premises."
+    sourceQuote: "Tenant shall indemnify, save harmless and defend Landlord"
+    mustMatch:
+      semanticTag: tenant_indemnifies_landlord
+      modeled: true
+      effect:
+        kind: indemnification
+        indemnifier: tenant
+        indemnitee: landlord
+        scope: "claims, damages, losses, costs, and expenses arising from tenant's acts, omissions, or occupancy of the Premises"
+        carveOuts:
+          - "Landlord's gross negligence"
+          - "Landlord's willful misconduct"
+
+# --- Honest-partial expectations -------------------------------------
+expectedUnmodeled:
+  - intent: "Proportionate Share 95% gross-up rule: actual operating expenses are grossed up to what they would be at 95% occupancy."
+    sourceHeading: "§2(c)(i)"
+    needs: >
+      Conditional adjustment primitive — operating expenses are
+      mutated upward IF occupancy < 95%. Modelable with Path B's
+      condition + formula if we compute the adjustment as a separate
+      variable, but awkward.
+
+  - intent: "Annual reconciliation of estimated vs actual operating expenses with credit/refund if overpaid (but never < 0)."
+    sourceHeading: "§2(c) tail"
+    needs: >
+      A reconciliation / true-up primitive with a zero-floor. Not
+      impossible under Path B (another conditional formula) but adds
+      a lot of machinery for one clause.
+
+  - intent: "Security deposit conversion: applied to April 2008 rent if not previously applied to tenant's obligations."
+    sourceHeading: "§3 tail"
+    needs: >
+      Scheduled conversion of a balance into rent credit. No Path B
+      primitive expresses this cleanly. Honest unmodeled stub.
+
+  - intent: "Two-notices-per-year cap on cure periods for payment defaults."
+    sourceHeading: "§18(a)"
+    needs: >
+      State-keeping across the year on default notices issued.
+      Executor-side concern, not easily expressed in the IR.
+
+  - intent: "Non-payment default cure: 12 hours (hazardous) vs 30 days (other)."
+    sourceHeading: "§18(b)"
+    needs: >
+      Our `default` effect does not carry curePeriod. The cure rules
+      would have to live in a sibling obligation clause or in executor
+      logic keyed by semanticTag.
+
+  - intent: "Right of First Refusal on specific floors (5th, 6th; 12th from Jan 2010)."
+    sourceHeading: "Special Stipulation §3"
+    needs: "Conditional option primitive with 10-business-day response window."
+
+  - intent: "Liquidated damages on termination for default: present value of remaining rent less fair rental value."
+    sourceHeading: "§18(cc)"
+    needs: >
+      Present-value computation, fair-rental-value comparison, and
+      cross-clause references to remaining term. Path B doesn't
+      include a present-value primitive.
+
+  - intent: "Holdover rent multiplier (paragraph 14)."
+    sourceHeading: "§14 Holding Over"
+
+  - intent: "Insurance and subrogation waiver requirements."
+    sourceHeading: "§§10, 11"
+
+  - intent: "Relocation right: landlord may relocate tenant to comparable space."
+    sourceHeading: "§36 Right to Relocate"
+
+  - intent: "Attorney's fees reimbursement."
+    sourceHeading: "§29 Attorney's Fees"
+
+  - intent: "Subordination to mortgages."
+    sourceHeading: "§15 Subordination"
+
+  - intent: "Assignment and subletting restrictions."
+    sourceHeading: "§9 Assignment and Subletting"
+
+  - intent: "Hazardous Materials prohibition."
+    sourceHeading: "§4 Occupancy and Use / §5 Compliance"
+
+  - intent: "Agreed Interest Rate on past-due amounts (for landlord-cure payments)."
+    sourceHeading: "§8"
+
+# --- Real source ambiguities -----------------------------------------
+knownConflicts:
+  - between:
+      - "§2(b) late charge: 'five percent (5%) of the amount of the delinquent rent or other payment'"
+      - "§2(b) aggregation: 'The amount of the late charge... for any month shall be computed on the aggregate amount of delinquent rents and other payments, including all accrued late charges then outstanding'"
+    resolution: >
+      The late charge compounds — each month's late-charge computation
+      includes prior unpaid late charges in the base. An honest IR
+      should represent `delinquentAmount` as "principal delinquent +
+      accrued late charges," not just principal. Most likely a
+      scenario/executor concern, not a clause-structure concern.
+
+  - between:
+      - "§18(a) cure period of 5 days after written notice"
+      - "§18(a) proviso: 'after Landlord shall have given two (2) such notices in any given calendar year, Tenant shall not be entitled to any notice or cure period for any subsequent default'"
+    resolution: >
+      The effective cure period depends on count-of-prior-notices-
+      this-year. Not a contradiction, but requires stateful
+      interpretation the IR alone cannot express.
+
+coverageTargets:
+  critical:
+    - monthly-rent-step-1
+    - monthly-rent-step-2
+    - late-rent-fee
+    - payment-default-trigger
+  supporting:
+    - lease-term
+    - operating-expense-pass-through
+    - security-deposit-payment
+    - renewal-option
+    - landlord-indemnification
+
+# --- Path B shape stress-test findings --------------------------------
+formatStressTest:
+  - finding: "Stepped rent schedules don't fit any effect kind cleanly."
+    status: blocker-candidate
+    detail: >
+      The Galleria rent is a 7-row table of (start_date, end_date,
+      monthly_amount). The honest Path B encoding is 7 separate
+      clauses, each with `condition: (currentDate in [start, end])`
+      and `effect: { kind: payment, amount: const(X) }`. It works,
+      but it's a schema-worn workaround — the IR loses the fact that
+      these seven clauses are ONE stepped schedule, and the decompiler
+      has no way to render them as a rent table.
+      OPTIONS:
+        (a) Accept the 7-clause encoding; decompiler gets smart about
+            detecting and rendering schedules.
+        (b) Add an eighth effect kind: `{ kind: "schedule", outputVar,
+            steps: [{start, end, amount: Expr}] }`. Clean but adds
+            surface area.
+        (c) Leave it out of Path B entirely — rent schedule lives in
+            scenario data, not IR.
+      My recommendation: (a) for now. Schedule detection in the
+      decompiler is cheap; adding a primitive is commitment.
+
+  - finding: "`TemporalRule.anchor` needs a direction (before / after)."
+    status: minor-shape-fix
+    detail: >
+      "180 days prior to lease end" needs anchor pointing backward.
+      Current `anchor?: string` is ambiguous. Proposal: either add
+      `direction?: "before" | "after"` to TemporalRule, or encode
+      direction in the anchor name (e.g. "lease_end_date_minus").
+      Recommend: add `direction?: "before" | "after"`, default "after".
+
+  - finding: "Default cure periods are per-trigger, not per-clause."
+    status: known-gap
+    detail: >
+      §18 has six default triggers with different cure periods (5d for
+      payment, 12h for hazardous, 30d for other covenants). Our
+      `default` effect has no curePeriod field. Keeping this honest
+      unmodeled in the cure-period sense is OK for Path B — the
+      executor can key cure logic off `semanticTag`. Revisit if
+      multiple families need structured cures.
+
+  - finding: "`indemnification` effect works cleanly — first real validation of it."
+    status: confirmed
+    detail: >
+      The Landlord indemnification maps to `{ indemnifier: tenant,
+      indemnitee: landlord, scope: <string>, carveOuts: [<strings>] }`
+      without strain. Good signal that Path B's indemnification kind
+      is useful and sized right.
+
+  - finding: "Conditions compound naturally with the new shape."
+    status: confirmed
+    detail: >
+      The renewal option's condition `not(tenantInDefault)` and the
+      late-fee's `gt(daysPastDue, 5)` both fit BoolExpr cleanly.
+      Before Path B, these conditions had nowhere to live on fee /
+      formula clauses.
+
+  - finding: "`semanticTag` as free string is already paying off."
+    status: confirmed
+    detail: >
+      Tags used in this file: base_rent, late_rent_fee,
+      operating_expense_pass_through, security_deposit,
+      payment_default, renewal_option, tenant_indemnifies_landlord,
+      lease_term. All domain-native; none force-fit to credit-card
+      vocabulary. Archetype validators for the lease family will key
+      on `semantic_tag == "late_rent_fee"` etc., which makes sense.
+
+  - finding: "Present-value and fair-rental-value computations are out of scope."
+    status: known-gap
+    detail: >
+      Liquidated damages on termination require PV of remaining rent
+      minus FRV of premises. No Expr primitive does PV. Honest
+      unmodeled is the right answer; not worth adding now.

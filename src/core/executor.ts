@@ -1,10 +1,29 @@
 import { evaluateExpr } from "./eval-expr.js";
 import { evaluateBoolExpr } from "./eval-bool.js";
-import { daysBetween } from "../util/date.js";
+import { matchEventToObligation } from "./match-obligation.js";
+import { addBusinessDays, addCalendarDays, daysBetween } from "../util/date.js";
 import { max, round2 } from "../util/math.js";
 import type { ExecutionResult, Breach, LedgerEntry } from "../types/execution.js";
-import type { BoolExpr, ContractIR } from "../types/ir.js";
+import type { BoolExpr, Clause, ContractIR, TemporalRule } from "../types/ir.js";
 import type { Scenario } from "../types/scenario.js";
+
+type ClauseWithObligation = Clause & { effect: Extract<Clause["effect"], { kind: "obligation" }> };
+type ClauseWithFormula = Clause & { effect: Extract<Clause["effect"], { kind: "formula" }> };
+type ClauseWithPayment = Clause & { effect: Extract<Clause["effect"], { kind: "payment" }> };
+type ClauseWithDefault = Clause & { effect: Extract<Clause["effect"], { kind: "default" }> };
+
+function isObligationClause(clause: Clause): clause is ClauseWithObligation {
+  return clause.effect.kind === "obligation";
+}
+function isFormulaClause(clause: Clause): clause is ClauseWithFormula {
+  return clause.effect.kind === "formula";
+}
+function isPaymentClause(clause: Clause): clause is ClauseWithPayment {
+  return clause.effect.kind === "payment";
+}
+function isDefaultClause(clause: Clause): clause is ClauseWithDefault {
+  return clause.effect.kind === "default";
+}
 
 interface MutableObligation {
   id: string;
@@ -49,20 +68,19 @@ function stringState(
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
-function findFeeAmount(ir: ContractIR, feeType: "late_payment" | "over_limit"): number {
-  const feeClause = ir.clauses.find(
-    (
-      c,
-    ): c is Extract<ContractIR["clauses"][number], { kind: "fee" }> =>
-      c.kind === "fee" && c.feeType === feeType,
-  );
-  if (!feeClause) return 0;
-  return feeClause.amountType === "fixed" ? feeClause.amountValue : 0;
+// Resolves a payment-effect amount to a dollar value when the amount expression
+// is a const. Non-const amounts (e.g. percent fees needing a transaction amount)
+// return undefined and are expected to be computed at fire-time.
+function findPaymentAmount(ir: ContractIR, semanticTag: string): number {
+  const clause = ir.clauses.find((c) => isPaymentClause(c) && c.semanticTag === semanticTag);
+  if (!clause || !isPaymentClause(clause)) return 0;
+  const amount = clause.effect.amount;
+  return amount.op === "const" && typeof amount.value === "number" ? amount.value : 0;
 }
 
 function findClauseId(
   ir: ContractIR,
-  matcher: (clause: ContractIR["clauses"][number]) => boolean,
+  matcher: (clause: Clause) => boolean,
 ): string | undefined {
   return ir.clauses.find(matcher)?.id;
 }
@@ -71,10 +89,10 @@ function findPaymentDefaultClauseId(ir: ContractIR): string | undefined {
   return findClauseId(
     ir,
     (clause) =>
-      clause.kind === "default" &&
+      isDefaultClause(clause) &&
       clause.modeled &&
       /payment|nonpayment|late/i.test(
-        `${clause.triggerDescription} ${clause.consequences.join(" ")}`,
+        `${clause.semanticTag} ${clause.sourceText} ${clause.effect.kind === "default" ? clause.effect.consequences.join(" ") : ""}`,
       ),
   );
 }
@@ -85,14 +103,12 @@ function evaluateFormulaOutput(
   vars: Record<string, number>,
 ): number | undefined {
   const formula = ir.clauses.find(
-    (
-      clause,
-    ): clause is Extract<ContractIR["clauses"][number], { kind: "formula" }> =>
-      clause.kind === "formula" && clause.modeled && clause.outputVar === outputVar,
+    (clause): clause is ClauseWithFormula =>
+      isFormulaClause(clause) && clause.modeled && clause.effect.outputVar === outputVar,
   );
   if (!formula) return undefined;
 
-  const value = evaluateExpr(formula.expr, vars);
+  const value = evaluateExpr(formula.effect.expr, vars);
   if (!Number.isFinite(value)) return undefined;
   return value;
 }
@@ -108,7 +124,7 @@ function isLeaseScenario(ir: ContractIR, scenario: Scenario): boolean {
 
   return ir.clauses.some(
     (clause) =>
-      clause.kind === "obligation" &&
+      isObligationClause(clause) &&
       clause.modeled &&
       clause.id === "clause.obligation.monthly_rent",
   );
@@ -132,28 +148,18 @@ function executeLeaseContract(
   const monthlyRent = round2(
     numberState(scenario.initialState, "monthlyRent", monthlyRentFromIr(ir)),
   );
-  const lateFee = findFeeAmount(ir, "late_payment");
+  const lateFee = findPaymentAmount(ir, "late_payment_fee");
   const lateFeeClauseId = findClauseId(
     ir,
-    (clause) => clause.kind === "fee" && clause.feeType === "late_payment",
+    (clause) => isPaymentClause(clause) && clause.semanticTag === "late_payment_fee",
   );
   const rentObligationClause = ir.clauses.find(
-    (
-      clause,
-    ): clause is Extract<ContractIR["clauses"][number], { kind: "obligation" }> =>
-      clause.kind === "obligation" &&
+    (clause): clause is ClauseWithObligation =>
+      isObligationClause(clause) &&
       clause.modeled &&
       clause.id === "clause.obligation.monthly_rent",
   );
-  const rentClauseId =
-    rentObligationClause?.id ||
-    findClauseId(
-      ir,
-      (clause) =>
-        clause.kind === "obligation" &&
-        clause.modeled &&
-        clause.id === "clause.obligation.monthly_rent",
-    ) || "clause.obligation.monthly_rent";
+  const rentClauseId = rentObligationClause?.id || "clause.obligation.monthly_rent";
   const rentDueDate = stringState(
     scenario.initialState,
     "rentDueDate",
@@ -334,6 +340,145 @@ function pushBreach(
   list.push(base);
 }
 
+function isCreditCardScenario(ir: ContractIR, scenario: Scenario): boolean {
+  if (scenario.initialState.contractFamily === "credit-card") return true;
+  const hasMinPaymentObligation = ir.clauses.some(
+    (clause) => isObligationClause(clause) && clause.id === "clause.obligation.minimum_payment",
+  );
+  const hasMinPaymentFormula = ir.clauses.some(
+    (clause) => isFormulaClause(clause) && clause.effect.outputVar === "minimum_payment_due",
+  );
+  const hasLatePaymentFee = ir.clauses.some(
+    (clause) => isPaymentClause(clause) && clause.semanticTag === "late_payment_fee",
+  );
+  return hasMinPaymentObligation || (hasLatePaymentFee && hasMinPaymentFormula);
+}
+
+function resolveDueDate(rule: TemporalRule, contractStart: string): string {
+  if (rule.type === "on_date" && typeof rule.value === "string") return rule.value;
+  const anchor = rule.anchor === "contractEnd" ? contractStart : contractStart;
+  const days = typeof rule.value === "number" ? rule.value : 0;
+  if (rule.type === "business_days") return addBusinessDays(anchor, days);
+  return addCalendarDays(anchor, days);
+}
+
+function executeGenericObligations(
+  ir: ContractIR,
+  scenario: Scenario,
+  events: Scenario["events"],
+): ExecutionResult {
+  const ledger: LedgerEntry[] = [];
+  const breaches: Breach[] = [];
+  const obligations: MutableObligation[] = [];
+
+  const contractStart =
+    stringState(scenario.initialState, "contractStart", events[0]?.date || "2026-01-01");
+
+  const modeledObligations = ir.clauses.filter(
+    (c): c is ClauseWithObligation => isObligationClause(c) && c.modeled,
+  );
+
+  const resolvedDueDates = new Map<string, string>();
+  for (const [index, clause] of modeledObligations.entries()) {
+    if (!conditionIsMet(clause.condition, scenario)) continue;
+
+    const obligation = clause.effect;
+    const dueRule = obligation.due || { type: "on_date" as const, value: "see_source_text" };
+    const dueDate = resolveDueDate(dueRule, contractStart);
+    resolvedDueDates.set(clause.id, dueDate);
+
+    obligations.push({
+      id: `obl-generic-${index + 1}`,
+      clauseId: clause.id,
+      dueDate,
+      amountDue: 0,
+      amountPaid: 0,
+      status: "open",
+    });
+
+    ledger.push(
+      asLedger(
+        `stmt-${clause.id}`,
+        dueDate,
+        "statement",
+        0,
+        0,
+        `Obligation due: ${obligation.action} (by ${dueDate})`,
+        clause.id,
+      ),
+    );
+  }
+
+  for (const event of events) {
+    let matchedClauseId: string | undefined;
+    for (const clause of modeledObligations) {
+      const dueDate = resolvedDueDates.get(clause.id);
+      if (!dueDate) continue;
+      const tracker = obligations.find((o) => o.clauseId === clause.id);
+      if (!tracker || tracker.status !== "open") continue;
+
+      const obligation = clause.effect;
+      const result = matchEventToObligation(event, {
+        id: clause.id,
+        actor: obligation.actor,
+        action: obligation.action,
+      }, dueDate);
+      if (result.matched) {
+        tracker.status = "met";
+        matchedClauseId = clause.id;
+        break;
+      }
+    }
+
+    ledger.push(
+      asLedger(
+        event.id,
+        event.date,
+        "notice",
+        0,
+        0,
+        matchedClauseId
+          ? `Event ${event.id} performed obligation ${matchedClauseId}`
+          : `Event ${event.id} recorded (no obligation matched)`,
+        matchedClauseId,
+      ),
+    );
+  }
+
+  for (const tracker of obligations) {
+    if (tracker.status !== "open") continue;
+    tracker.status = "missed";
+    pushBreach(
+      breaches,
+      `breach-missed-${tracker.clauseId}`,
+      tracker.dueDate,
+      "obligation_missed",
+      `No scenario event performed obligation ${tracker.clauseId} by ${tracker.dueDate}`,
+      tracker.clauseId,
+    );
+  }
+
+  return {
+    ledger,
+    breaches,
+    obligations: obligations.map((o) => ({
+      id: o.id,
+      clauseId: o.clauseId,
+      dueDate: o.dueDate,
+      amountDue: round2(o.amountDue),
+      amountPaid: round2(o.amountPaid),
+      status: o.status === "open" ? "missed" : o.status,
+    })),
+    summary: {
+      endingBalance: 0,
+      totalInterestCharged: 0,
+      totalFeesCharged: 0,
+      totalPaid: 0,
+      breached: breaches.length > 0,
+    },
+  };
+}
+
 export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionResult {
   const events = [...scenario.events].sort((a, b) => {
     const dateCompare = a.date.localeCompare(b.date);
@@ -343,6 +488,10 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
 
   if (isLeaseScenario(ir, scenario)) {
     return executeLeaseContract(ir, scenario, events);
+  }
+
+  if (!isCreditCardScenario(ir, scenario)) {
+    return executeGenericObligations(ir, scenario, events);
   }
 
   const ledger: LedgerEntry[] = [];
@@ -356,22 +505,22 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
     typeof aprFormulaValue === "number" ? aprFormulaValue : 7.9,
   );
   const dailyRate = apr / 100 / 365;
-  const lateFee = findFeeAmount(ir, "late_payment");
-  const overLimitFee = findFeeAmount(ir, "over_limit");
+  const lateFee = findPaymentAmount(ir, "late_payment_fee");
+  const overLimitFee = findPaymentAmount(ir, "over_limit_fee");
   const creditLimit = numberState(scenario.initialState, "creditLimit", 0);
   const statementDate = stringState(scenario.initialState, "statementDate", "2026-01-31");
   const dueDate = stringState(scenario.initialState, "dueDate", "2026-02-25");
   const minimumPaymentClauseId = findClauseId(
     ir,
-    (c) => c.kind === "obligation" && c.id === "clause.obligation.minimum_payment",
+    (c) => isObligationClause(c) && c.id === "clause.obligation.minimum_payment",
   );
   const lateFeeClauseId = findClauseId(
     ir,
-    (c) => c.kind === "fee" && c.feeType === "late_payment",
+    (c) => isPaymentClause(c) && c.semanticTag === "late_payment_fee",
   );
   const overLimitClauseId = findClauseId(
     ir,
-    (c) => c.kind === "fee" && c.feeType === "over_limit",
+    (c) => isPaymentClause(c) && c.semanticTag === "over_limit_fee",
   );
   const paymentDefaultClauseId = findPaymentDefaultClauseId(ir);
 
@@ -397,7 +546,7 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
             accruedInterest,
             balance,
             `Interest accrued for ${elapsedDays} day(s) at APR ${apr}%`,
-            findClauseId(ir, (c) => c.kind === "formula" && c.outputVar === "apr_nominal"),
+            findClauseId(ir, (c) => isFormulaClause(c) && c.effect.outputVar === "apr_nominal"),
           ),
         );
       }

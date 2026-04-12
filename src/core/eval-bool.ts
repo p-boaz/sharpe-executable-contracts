@@ -3,10 +3,11 @@ import type { BoolExpr } from "../types/ir.js";
 export type BoolEnv = Record<string, string | number | boolean>;
 
 function toComparableValue(
-  value: string | number | BoolExpr | undefined,
+  value: string | number | boolean | BoolExpr | undefined,
   env: BoolEnv,
 ): string | number | boolean {
   if (typeof value === "number") return value;
+  if (typeof value === "boolean") return value;
   if (typeof value === "string") {
     if (value in env) return env[value] as string | number | boolean;
     return value;
@@ -66,6 +67,11 @@ export function evaluateBoolExpr(expr: BoolExpr, env: BoolEnv): boolean {
       const args = expr.args || [];
       if (args.length === 0) return false;
       return args.some((arg) => evaluateBoolExpr(arg, env));
+    }
+    case "not": {
+      const args = expr.args || [];
+      if (args.length !== 1) return false;
+      return !evaluateBoolExpr(args[0]!, env);
     }
     default:
       return false;

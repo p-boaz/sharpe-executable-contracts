@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { callOpenAIJson } from "../llm/openai-json.js";
 import type {
+  AccumulationUnit,
   BoolExpr,
   Clause,
   ContractIR,
   Definition,
+  Effect,
   Expr,
   SourceSpan,
   TemporalRule,
@@ -25,7 +27,7 @@ const IrTopSchema = z.object({
   contractId: z.string().min(1),
   title: z.string().min(1),
   jurisdiction: z.string().optional(),
-  currency: z.literal("USD"),
+  currency: z.string().min(1),
   parties: z.array(
     z.object({
       id: z.string().min(1),
@@ -46,9 +48,12 @@ const IrTopSchema = z.object({
       .object({
         id: z.string().min(1),
         title: z.string().min(1),
-        kind: z.enum(["obligation", "formula", "fee", "default"]),
         sourceText: z.string().min(1),
         modeled: z.boolean(),
+        // Default "untagged" if the LLM omits the tag — normalizer still
+        // coerces, so this guards against a hard crash on malformed LLM output
+        // and lets the pipeline surface the missing tag rather than 500 out.
+        semanticTag: z.string().min(1).optional().default("untagged"),
       })
       .passthrough(),
   ),
@@ -69,7 +74,7 @@ const irJsonSchema: Record<string, unknown> = {
     contractId: { type: "string" },
     title: { type: "string" },
     jurisdiction: { type: "string" },
-    currency: { type: "string", enum: ["USD"] },
+    currency: { type: "string" },
     parties: {
       type: "array",
       items: {
@@ -102,16 +107,16 @@ const irJsonSchema: Record<string, unknown> = {
       items: {
         type: "object",
         additionalProperties: true,
-        required: ["id", "title", "kind", "sourceText", "modeled"],
+        required: ["id", "title", "sourceText", "modeled", "effect"],
         properties: {
           id: { type: "string" },
           title: { type: "string" },
-          kind: {
-            type: "string",
-            enum: ["obligation", "formula", "fee", "default"],
-          },
           sourceText: { type: "string" },
           modeled: { type: "boolean" },
+          semanticTag: { type: "string" },
+          // `effect` and `condition` are passed through; the normalizer validates them.
+          effect: { type: "object" },
+          condition: { type: "object" },
         },
       },
     },
@@ -450,12 +455,10 @@ function addGenericUnmodeledClauses(text: string, clauses: Clause[]): void {
     clauses.push({
       id: `clause.unmodeled.${slugify(title) || clauses.length + 1}`,
       title,
-      kind: "obligation",
-      actor: "party",
-      action: `See source text for unsupported clause: ${title}`,
-      due: { type: "on_date", value: "see_source_text" },
       sourceText: findSnippet(text, new RegExp(escapeRegExp(title), "i"), title),
       modeled: false,
+      semanticTag: "unmodeled_section",
+      effect: { kind: "unmodeled" },
     });
     if (clauses.length >= 3) return;
   }
@@ -464,12 +467,10 @@ function addGenericUnmodeledClauses(text: string, clauses: Clause[]): void {
     clauses.push({
       id: "clause.unmodeled.summary",
       title: "Unsupported contract terms",
-      kind: "obligation",
-      actor: "party",
-      action: "See source text for unsupported contract obligations",
-      due: { type: "on_date", value: "see_source_text" },
       sourceText: normalizeContractText(text).slice(0, 260),
       modeled: false,
+      semanticTag: "unmodeled_summary",
+      effect: { kind: "unmodeled" },
     });
   }
 }
@@ -492,22 +493,28 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
       clauses.push({
         id: "clause.obligation.monthly_rent",
         title: "Monthly rent due",
-        kind: "obligation",
-        actor: "tenant",
-        action: "Pay monthly rent by the first day of each month",
-        due: { type: "on_date", value: "first_day_of_month" },
-        condition: { op: "eq", left: "rent_cycle_active", right: 1 },
         sourceText: leaseRent.sourceText || "Monthly rent payment terms",
         modeled: true,
+        semanticTag: "rent_obligation",
+        condition: { op: "eq", left: "rent_cycle_active", right: 1 },
+        effect: {
+          kind: "obligation",
+          actor: "tenant",
+          action: "Pay monthly rent by the first day of each month",
+          due: { type: "on_date", value: "first_day_of_month" },
+        },
       });
       clauses.push({
         id: "clause.formula.monthly_rent",
         title: "Monthly rent amount",
-        kind: "formula",
-        outputVar: "monthly_rent_due",
-        expr: { op: "const", value: leaseRent.amount },
         sourceText: leaseRent.sourceText || "Monthly rent amount",
         modeled: true,
+        semanticTag: "base_rent",
+        effect: {
+          kind: "formula",
+          outputVar: "monthly_rent_due",
+          expr: { op: "const", value: leaseRent.amount },
+        },
       });
     }
 
@@ -519,11 +526,13 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
       clauses.push({
         id: "clause.default.tenant_default",
         title: "Tenant default and remedies",
-        kind: "default",
-        triggerDescription: "Tenant default and remedies are described in the lease",
-        consequences: ["Refer to source text for full remedies and cure mechanics"],
         sourceText: leaseDefaultSnippet,
         modeled: false,
+        semanticTag: "tenant_default",
+        effect: {
+          kind: "default",
+          consequences: ["Refer to source text for full remedies and cure mechanics"],
+        },
       });
     }
   }
@@ -536,12 +545,15 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
     clauses.push({
       id: "clause.obligation.minimum_payment",
       title: "Minimum payment due by statement due date",
-      kind: "obligation",
-      actor: isCreditCard ? "cardholder" : "party",
-      action: "Pay at least the minimum payment by due date",
-      due: { type: "on_date", value: "statement_due_date" },
       sourceText: minimumPaymentSnippet,
       modeled: true,
+      semanticTag: "minimum_payment_obligation",
+      effect: {
+        kind: "obligation",
+        actor: isCreditCard ? "cardholder" : "party",
+        action: "Pay at least the minimum payment by due date",
+        due: { type: "on_date", value: "statement_due_date" },
+      },
     });
   }
 
@@ -553,23 +565,26 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
     clauses.push({
       id: "clause.formula.minimum_payment",
       title: "Minimum payment formula",
-      kind: "formula",
-      outputVar: "minimum_payment_due",
-      expr: {
-        op: "max",
-        args: [
-          {
-            op: "mul",
-            args: [
-              { op: "var", name: "new_balance" },
-              { op: "const", value: 0.03 },
-            ],
-          },
-          { op: "const", value: 15 },
-        ],
-      },
       sourceText: minimumPaymentFormulaSnippet,
       modeled: true,
+      semanticTag: "minimum_payment_formula",
+      effect: {
+        kind: "formula",
+        outputVar: "minimum_payment_due",
+        expr: {
+          op: "max",
+          args: [
+            {
+              op: "mul",
+              args: [
+                { op: "var", name: "new_balance" },
+                { op: "const", value: 0.03 },
+              ],
+            },
+            { op: "const", value: 15 },
+          ],
+        },
+      },
     });
   }
 
@@ -578,13 +593,15 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
     clauses.push({
       id: "clause.fee.late_payment",
       title: "Late payment fee",
-      kind: "fee",
-      feeType: "late_payment",
-      amountType: "fixed",
-      amountValue: lateFee,
-      triggerDescription: "Payment due is not met by due-check date",
       sourceText: findSnippetFromLabel(text, /Late Payment Fee/i) || "Late payment fee",
       modeled: true,
+      semanticTag: "late_payment_fee",
+      effect: {
+        kind: "payment",
+        payer: isCreditCard ? "cardholder" : "party",
+        payee: "issuer",
+        amount: { op: "const", value: lateFee },
+      },
     });
   }
 
@@ -593,15 +610,17 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
     clauses.push({
       id: "clause.fee.over_limit",
       title: "Over-limit fee",
-      kind: "fee",
-      feeType: "over_limit",
-      amountType: "fixed",
-      amountValue: overLimitFee,
-      triggerDescription: "Statement balance exceeds credit limit",
       sourceText:
         findSnippetFromLabel(text, /Over(?: Credit Limit|[- ]the-Credit Limit) Fee/i) ||
         "Over credit limit fee",
       modeled: true,
+      semanticTag: "over_limit_fee",
+      effect: {
+        kind: "payment",
+        payer: isCreditCard ? "cardholder" : "party",
+        payee: "issuer",
+        amount: { op: "const", value: overLimitFee },
+      },
     });
   }
 
@@ -613,12 +632,15 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
     clauses.push({
       id: "clause.obligation.credit_limit",
       title: "Stay within credit limit",
-      kind: "obligation",
-      actor: isCreditCard ? "cardholder" : "party",
-      action: "Keep the outstanding balance within the credit limit",
-      due: { type: "on_date", value: "ongoing" },
       sourceText: creditLimitSnippet,
       modeled: false,
+      semanticTag: "credit_limit_obligation",
+      effect: {
+        kind: "obligation",
+        actor: isCreditCard ? "cardholder" : "party",
+        action: "Keep the outstanding balance within the credit limit",
+        due: { type: "on_date", value: "ongoing" },
+      },
     });
   }
 
@@ -627,30 +649,42 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
     clauses.push({
       id: "clause.fee.returned_payment",
       title: "Returned payment fee",
-      kind: "fee",
-      feeType: "returned_payment",
-      amountType: "fixed",
-      amountValue: returnedPaymentFee,
-      triggerDescription: "Payment instrument is returned unpaid",
       sourceText:
         findSnippetFromLabel(text, /Returned Payment Fee/i) || "Returned payment fee",
       modeled: false,
+      semanticTag: "returned_payment_fee",
+      effect: {
+        kind: "payment",
+        payer: isCreditCard ? "cardholder" : "party",
+        payee: "issuer",
+        amount: { op: "const", value: returnedPaymentFee },
+      },
     });
   }
 
   const foreignTxnFee = extractPercentFee(text, /Foreign Transaction/i);
   if (typeof foreignTxnFee === "number") {
+    // Percent fee on a transaction amount: amount = (rate / 100) * transaction_amount.
+    const rateAsFraction = foreignTxnFee / 100;
     clauses.push({
       id: "clause.fee.foreign_transaction",
       title: "Foreign transaction fee",
-      kind: "fee",
-      feeType: "foreign_txn",
-      amountType: "percent",
-      amountValue: foreignTxnFee,
-      triggerDescription: "Foreign currency or cross-border transaction is posted",
       sourceText:
         findSnippetFromLabel(text, /Foreign Transaction/i) || "Foreign transaction fee",
       modeled: false,
+      semanticTag: "foreign_transaction_fee",
+      effect: {
+        kind: "payment",
+        payer: isCreditCard ? "cardholder" : "party",
+        payee: "issuer",
+        amount: {
+          op: "mul",
+          args: [
+            { op: "const", value: rateAsFraction },
+            { op: "var", name: "transaction_amount" },
+          ],
+        },
+      },
     });
   }
 
@@ -662,11 +696,13 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
     clauses.push({
       id: "clause.default.illegal_use",
       title: "Default on illegal card use",
-      kind: "default",
-      triggerDescription: "Illegal use of the card is treated as a default",
-      consequences: ["Default may be asserted by the credit union"],
       sourceText: illegalUseDefaultSnippet,
       modeled: false,
+      semanticTag: "illegal_use_default",
+      effect: {
+        kind: "default",
+        consequences: ["Default may be asserted by the credit union"],
+      },
     });
   }
 
@@ -727,20 +763,33 @@ function normalizeSourceSpan(raw: unknown): SourceSpan | undefined {
   return { start: start as number, end: end as number };
 }
 
-function normalizeTemporalRule(raw: unknown): TemporalRule {
-  if (raw && typeof raw === "object") {
+function normalizeTemporalRule(raw: unknown, depth = 0): TemporalRule {
+  if (raw && typeof raw === "object" && depth < 3) {
     const candidate = raw as Record<string, unknown>;
     const type = candidate.type;
     const value = candidate.value;
     const isValidType =
-      type === "calendar_days" || type === "business_days" || type === "on_date";
+      type === "calendar_days" ||
+      type === "business_days" ||
+      type === "months" ||
+      type === "years" ||
+      type === "on_date";
     const isValidValue = typeof value === "string" || typeof value === "number";
     if (isValidType && isValidValue) {
       const anchor = candidate.anchor;
+      const directionRaw = candidate.direction;
+      const direction: TemporalRule["direction"] | undefined =
+        directionRaw === "before" || directionRaw === "after" ? directionRaw : undefined;
+      const graceAfter =
+        candidate.graceAfter && typeof candidate.graceAfter === "object"
+          ? normalizeTemporalRule(candidate.graceAfter, depth + 1)
+          : undefined;
       return {
         type,
         value,
         ...(typeof anchor === "string" && anchor ? { anchor } : {}),
+        ...(direction ? { direction } : {}),
+        ...(graceAfter ? { graceAfter } : {}),
       };
     }
   }
@@ -789,6 +838,16 @@ function normalizeExpr(raw: unknown, depth = 0): Expr {
   };
 }
 
+function normalizeBoolOperand(
+  raw: unknown,
+  depth: number,
+): string | number | boolean | BoolExpr | undefined {
+  if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") {
+    return raw;
+  }
+  return normalizeBoolExpr(raw, depth + 1);
+}
+
 function normalizeBoolExpr(raw: unknown, depth = 0): BoolExpr | undefined {
   if (!raw || typeof raw !== "object" || depth > 4) return undefined;
   const candidate = raw as Record<string, unknown>;
@@ -801,7 +860,8 @@ function normalizeBoolExpr(raw: unknown, depth = 0): BoolExpr | undefined {
     op !== "lt" &&
     op !== "lte" &&
     op !== "and" &&
-    op !== "or"
+    op !== "or" &&
+    op !== "not"
   ) {
     return undefined;
   }
@@ -816,16 +876,18 @@ function normalizeBoolExpr(raw: unknown, depth = 0): BoolExpr | undefined {
     return { op, args };
   }
 
-  const leftRaw = candidate.left;
-  const rightRaw = candidate.right;
-  const left =
-    typeof leftRaw === "string" || typeof leftRaw === "number"
-      ? leftRaw
-      : normalizeBoolExpr(leftRaw, depth + 1);
-  const right =
-    typeof rightRaw === "string" || typeof rightRaw === "number"
-      ? rightRaw
-      : normalizeBoolExpr(rightRaw, depth + 1);
+  if (op === "not") {
+    const args = Array.isArray(candidate.args)
+      ? candidate.args
+          .map((item) => normalizeBoolExpr(item, depth + 1))
+          .filter((item): item is BoolExpr => item != null)
+      : [];
+    if (args.length !== 1) return undefined;
+    return { op, args };
+  }
+
+  const left = normalizeBoolOperand(candidate.left, depth);
+  const right = normalizeBoolOperand(candidate.right, depth);
 
   if (left == null || right == null) return undefined;
   return {
@@ -835,73 +897,122 @@ function normalizeBoolExpr(raw: unknown, depth = 0): BoolExpr | undefined {
   };
 }
 
-function normalizeClause(rawClause: Record<string, unknown>): Clause {
-  const kind = rawClause.kind;
-  const sourceSpan = normalizeSourceSpan(rawClause.sourceSpan);
-  const condition = normalizeBoolExpr(rawClause.condition);
-  if (kind === "obligation") {
+const ACCUMULATION_UNITS: AccumulationUnit[] = [
+  "day",
+  "month",
+  "year",
+  "kg",
+  "watt",
+  "usd_raised",
+  "unit",
+];
+
+function normalizeEffect(rawClause: Record<string, unknown>): Effect {
+  const rawEffect = rawClause.effect;
+  if (!rawEffect || typeof rawEffect !== "object") {
+    // Legacy or malformed clauses fall through to unmodeled.
+    return { kind: "unmodeled" };
+  }
+  const candidate = rawEffect as Record<string, unknown>;
+  const kind = candidate.kind;
+
+  if (kind === "payment") {
+    const assetKind = typeof candidate.assetKind === "string" ? candidate.assetKind : undefined;
+    const cap =
+      candidate.cap && typeof candidate.cap === "object" ? normalizeExpr(candidate.cap) : undefined;
     return {
-      id: String(rawClause.id),
-      title: String(rawClause.title),
+      kind: "payment",
+      payer: String(candidate.payer || "party"),
+      payee: String(candidate.payee || "counterparty"),
+      amount: normalizeExpr(candidate.amount),
+      ...(cap ? { cap } : {}),
+      ...(assetKind ? { assetKind } : {}),
+    };
+  }
+
+  if (kind === "obligation") {
+    const due =
+      candidate.due && typeof candidate.due === "object"
+        ? normalizeTemporalRule(candidate.due)
+        : undefined;
+    const curePeriod =
+      candidate.curePeriod && typeof candidate.curePeriod === "object"
+        ? normalizeTemporalRule(candidate.curePeriod)
+        : undefined;
+    return {
       kind: "obligation",
-      actor: String(rawClause.actor || "party"),
-      action: String(rawClause.action || "Perform obligation"),
-      due: normalizeTemporalRule(rawClause.due),
-      ...(condition ? { condition } : {}),
-      ...(rawClause.curePeriod ? { curePeriod: normalizeTemporalRule(rawClause.curePeriod) } : {}),
-      sourceText: String(rawClause.sourceText),
-      ...(sourceSpan ? { sourceSpan } : {}),
-      modeled: Boolean(rawClause.modeled),
+      actor: String(candidate.actor || "party"),
+      action: String(candidate.action || "Perform obligation"),
+      ...(due ? { due } : {}),
+      ...(curePeriod ? { curePeriod } : {}),
     };
   }
 
   if (kind === "formula") {
+    const cap =
+      candidate.cap && typeof candidate.cap === "object" ? normalizeExpr(candidate.cap) : undefined;
     return {
-      id: String(rawClause.id),
-      title: String(rawClause.title),
       kind: "formula",
-      outputVar: String(rawClause.outputVar || "derived_value"),
-      expr: normalizeExpr(rawClause.expr),
-      sourceText: String(rawClause.sourceText),
-      ...(sourceSpan ? { sourceSpan } : {}),
-      modeled: Boolean(rawClause.modeled),
+      outputVar: String(candidate.outputVar || "derived_value"),
+      expr: normalizeExpr(candidate.expr),
+      ...(cap ? { cap } : {}),
     };
   }
 
-  if (kind === "fee") {
+  if (kind === "accumulation") {
+    const per = ACCUMULATION_UNITS.includes(candidate.per as AccumulationUnit)
+      ? (candidate.per as AccumulationUnit)
+      : "day";
+    const cap =
+      candidate.cap && typeof candidate.cap === "object" ? normalizeExpr(candidate.cap) : undefined;
     return {
-      id: String(rawClause.id),
-      title: String(rawClause.title),
-      kind: "fee",
-      feeType:
-        rawClause.feeType === "late_payment" ||
-        rawClause.feeType === "over_limit" ||
-        rawClause.feeType === "returned_payment" ||
-        rawClause.feeType === "foreign_txn"
-          ? rawClause.feeType
-          : "late_payment",
-      amountType: rawClause.amountType === "percent" ? "percent" : "fixed",
-      amountValue: Number.isFinite(Number(rawClause.amountValue))
-        ? Number(rawClause.amountValue)
-        : 0,
-      triggerDescription: String(rawClause.triggerDescription || ""),
-      sourceText: String(rawClause.sourceText),
-      ...(sourceSpan ? { sourceSpan } : {}),
-      modeled: Boolean(rawClause.modeled),
+      kind: "accumulation",
+      per,
+      rate: normalizeExpr(candidate.rate),
+      ...(cap ? { cap } : {}),
     };
   }
 
+  if (kind === "indemnification") {
+    return {
+      kind: "indemnification",
+      indemnifier: String(candidate.indemnifier || "party"),
+      indemnitee: String(candidate.indemnitee || "counterparty"),
+      scope: String(candidate.scope || "see source text"),
+      carveOuts: Array.isArray(candidate.carveOuts)
+        ? candidate.carveOuts.map((v) => String(v))
+        : [],
+    };
+  }
+
+  if (kind === "default") {
+    return {
+      kind: "default",
+      consequences: Array.isArray(candidate.consequences)
+        ? candidate.consequences.map((v) => String(v))
+        : [],
+    };
+  }
+
+  return { kind: "unmodeled" };
+}
+
+function normalizeClause(rawClause: Record<string, unknown>): Clause {
+  const sourceSpan = normalizeSourceSpan(rawClause.sourceSpan);
+  const condition = normalizeBoolExpr(rawClause.condition);
+  const semanticTag =
+    typeof rawClause.semanticTag === "string" && rawClause.semanticTag
+      ? rawClause.semanticTag
+      : "unmodeled_section";
   return {
     id: String(rawClause.id),
     title: String(rawClause.title),
-    kind: "default",
-    triggerDescription: String(rawClause.triggerDescription || ""),
-    consequences: Array.isArray(rawClause.consequences)
-      ? rawClause.consequences.map((v) => String(v))
-      : [],
     sourceText: String(rawClause.sourceText),
     ...(sourceSpan ? { sourceSpan } : {}),
     modeled: Boolean(rawClause.modeled),
+    semanticTag,
+    ...(condition ? { condition } : {}),
+    effect: normalizeEffect(rawClause),
   };
 }
 
@@ -913,7 +1024,7 @@ function normalizeIr(raw: unknown, sourceFile: string, contractText: string): Co
   return {
     contractId: parsed.contractId,
     title: parsed.title,
-    currency: "USD",
+    currency: parsed.currency,
     parties: parsed.parties,
     definitions: parsed.definitions,
     clauses: clausesWithSpans,

@@ -1,0 +1,298 @@
+# Expected IR content for the ORBCOMM / Orbital Sciences
+# Procurement Amendment (6 additional AIS payloads).
+#
+# The hackathon brief tags this contract "High complexity: milestones,
+# delivery, warranty." This is the hardest stress test of the three
+# expectation files written so far. Most of the load-bearing content
+# here is genuinely unmodelable with our current IR primitives, and
+# that finding is the point of this file.
+
+contractId: orbcomm-orbital-amendment-1-ais-payload-procurement-2006
+contractFile: contracts/ORBCOMM-Orbital-amendment-1-AIS-payload-procurement-2006.md
+family: procurement
+
+expectedParties:
+  - role: buyer
+    name: "ORBCOMM Inc."
+  - role: supplier
+    name: "Orbital Sciences Corporation"
+
+# --- Modeled expectations --------------------------------------------
+# Under our CURRENT IR, only the flat dollar amounts can be captured
+# honestly. The multi-conditional and cap-within-cap logic needs new
+# primitives (see `formatStressTest` below).
+expectedClauses:
+  - id: firm-fixed-price
+    intent: "Firm fixed price is $17,000,000 for six Additional Payloads."
+    sourceQuote: "shall total $17,000,000 (the \"Price\")"
+    mustMatch:
+      semanticTag: firm_fixed_price
+      modeled: true
+      effect:
+        kind: formula
+        outputVar: price
+        exprShape: "const(17000000)"
+
+  - id: optional-payload-unit-price
+    intent: "Each of up to 2 Optional Payloads is priced at $2,200,000."
+    sourceQuote: "firm fixed price for each Optional Payload, each with an additional SRX, shall be $2,200,000"
+    mustMatch:
+      semanticTag: optional_payload_unit_price
+      modeled: true
+      effect:
+        kind: formula
+        outputVar: optionalPayloadUnitPrice
+        exprShape: "const(2200000)"
+
+  - id: net-10-payment-terms
+    intent: "Payments are due net 10 days."
+    sourceQuote: "Payments shall be due net 10 days"
+    mustMatch:
+      semanticTag: net_payment_terms
+      modeled: true
+      effect:
+        kind: obligation
+        actor: buyer
+        action: "pay invoice"
+        due:
+          type: calendar_days
+          value: 10
+          anchor: invoice_date
+          direction: after
+
+  - id: on-time-delivery-incentive-flat
+    intent: "Single on-time delivery incentive of 1.2% of Price ($204,000)."
+    sourceQuote: "single on-time delivery incentive of 1.2% of the Price ($204,000)"
+    mustMatch:
+      semanticTag: on_time_delivery_incentive
+      modeled: true
+      # Path B allows a `condition: BoolExpr` at the clause level, so the
+      # "if all payloads delivered on time" trigger IS capturable now.
+      # (Before Path B the IR had no slot for this.)
+      effect:
+        kind: formula
+        outputVar: onTimeIncentive
+        exprShape: "mul(const(0.012), var(price))"
+
+  - id: holdback-amount
+    intent: "4% of Price ($680,000) is held back until 12 months after successful payload IOT."
+    sourceQuote: "four percent (4%) of the Price ($680,000) (the \"Holdback Amount\")"
+    mustMatch:
+      semanticTag: holdback_amount
+      modeled: true
+      effect:
+        kind: formula
+        outputVar: holdbackAmount
+        exprShape: "mul(const(0.04), var(price))"
+    note: >
+      The release CONDITION (all payloads successfully operating at
+      1-year anniversary) can now live in `clause.condition` under
+      Path B.
+
+  - id: optional-payload-exercise-window
+    intent: "Option to order up to 2 Optional Payloads must be exercised within 3 months of Effective Date."
+    sourceQuote: "This option must be exercised, if at all and at ORBCOMM's sole discretion, no later than three (3) months after the Effective Date"
+    mustMatch:
+      semanticTag: option_exercise_window
+      modeled: true
+      effect:
+        kind: obligation
+        actor: buyer
+        action: "exercise option to order Optional Payloads"
+        due:
+          type: months
+          value: 3
+          anchor: effective_date
+          direction: after
+
+# --- Modelable-but-unmodeled -----------------------------------------
+# These are the clauses that the contract actually runs on. They are
+# genuinely executable in principle, but our IR has no clause kind or
+# expression primitive that captures them. Each one names what
+# primitive would be needed.
+expectedUnmodeled:
+  - intent: "Late delivery liquidated damages: $8,500/day per late Additional Payload, capped at 15% of Price ($2,550,000 total) AND $25,000/day."
+    sourceHeading: "Price Adjustments — (i) Late Delivery"
+    needs: >
+      (a) A `trigger` primitive: "if delivered after deadline";
+      (b) a per-day accumulating fee primitive (not a fixed fee);
+      (c) cap-within-cap primitive: per-day cap AND cumulative cap;
+      (d) a delivery-deadline temporal primitive that supports
+      "14 months + 60 days grace period" (compound durations).
+
+  - intent: "Per-day early-delivery incentive: 0.01% of Price ($1,700/day), capped at $100,000 total across all payloads."
+    sourceHeading: "Price Adjustments — (ii) On Time or Early Delivery"
+    needs: >
+      Per-day accumulating incentive; aggregate cap across all payloads;
+      conditional on "all payloads delivered on time."
+
+  - intent: "Multi-item aggregation rules for late/early calculation — greatest lateness controls, least earliness controls, non-additive."
+    sourceHeading: "Price Adjustments — (iii) Calculation"
+    needs: >
+      Aggregation operators (max/min) over per-deliverable timeliness,
+      plus the semantic distinction between penalty-side aggregation
+      (max) and incentive-side aggregation (min).
+
+  - intent: "Force majeure excuses Orbital from late-delivery damages but does NOT extend on-time incentive deadline."
+    sourceHeading: "Price Adjustments — (iii) / §12"
+    needs: >
+      An excusable-delay primitive that modifies penalty accumulation
+      but not incentive-window computation. This is a contract-wide
+      rule, not a per-clause one.
+
+  - intent: "Power-overage penalty: $10,000 per Kg over 20.31 Kg (1 kg grace), per Additional Payload, capped at $100,000."
+    sourceHeading: "Price Adjustments — (iv) Power and Weight"
+    needs: >
+      Per-unit overage formula with grace threshold and a maximum cap;
+      also pro-ration for partial units.
+
+  - intent: "Weight-overage penalty: $10,000 per 5 Watts over 120 Watts (5 W margin), per Additional Payload, capped at $100,000."
+    sourceHeading: "Price Adjustments — (iv) Power and Weight"
+    needs: "Same as above."
+
+  - intent: "Additional environmental testing: $94,000 for first payload, $26,000 each subsequent; 14-day schedule relief; must be directed within 6 months of Effective Date."
+    sourceHeading: "Price Adjustments — (v) Additional Environmental Testing"
+    needs: >
+      Conditional fee (directed by buyer); tiered pricing (first vs
+      subsequent); schedule-relief effect on downstream deadlines;
+      direction-window temporal constraint.
+
+  - intent: "Holdback release condition: 4% refund paid on 1-year anniversary IF payloads operating per specs, otherwise pro-rated refund."
+    sourceHeading: "Price Adjustments — (vii) Holdback Charge"
+    needs: >
+      Conditional payment primitive with a pro-rata fallback computed
+      from per-payload operational status at a future event.
+
+  - intent: "Correction / warranty: defect repair time adds to delivery date for incentive/penalty calculations."
+    sourceHeading: "Corrections (§8)"
+    needs: >
+      Delivery-date mutation primitive — a defect correction event
+      modifies the effective delivery date used by §3's formulas.
+
+  - intent: "Option right: ORBCOMM may exercise up to 2 Optional Payloads within 3 months of Effective Date; payload delivery 14 months + grace after exercise."
+    sourceHeading: "Additional Options (§4)"
+    needs: >
+      Option / election primitive with its own nested delivery clock
+      that doesn't start until exercise.
+
+  - intent: "Delivery schedule itself — milestone dates for EDU Unit, 6 flight payloads, antennas, per Exhibit E-1."
+    sourceHeading: "§1 Additional Payloads"
+    needs: >
+      Milestone schedule primitive. Completely absent from our IR.
+
+  - intent: "Force Majeure definition (acts of God, terrorism, war, weather, launch delay, etc.)."
+    sourceHeading: "§12 Force Majeure"
+    needs: "A cross-clause modifier primitive, not a standalone clause."
+
+  - intent: "Source code escrow with Iron Mountain; ORBCOMM pays escrow fees; ORBCOMM may adjust/terminate."
+    sourceHeading: "§9 Security Interest; Property Accounting; Source Code Escrow"
+
+  - intent: "Security interest: Orbital grants ORBCOMM first-priority security interest in work-in-progress and proceeds."
+    sourceHeading: "§9 Security Interest"
+
+  - intent: "Taxes: US tax → Orbital; non-US tax → ORBCOMM; title passes before leaving US."
+    sourceHeading: "§5 Taxes, Delivery, Title"
+
+  - intent: "Specific performance: either party may seek specific performance of the other's obligations."
+    sourceHeading: "§11 Specific Performance"
+
+  - intent: "Public announcement: neither party without other's approval (not unreasonably withheld)."
+    sourceHeading: "§14 Public Announcement"
+
+  - intent: "Amendment-prevails clause: in case of conflict, Amendment supersedes the Procurement Agreement."
+    sourceHeading: "§17 Rights and Obligations under Procurement Agreement"
+    needs: >
+      Inter-document precedence rule. Our IR has no representation of
+      a base-agreement + amendment layering, so this is entirely out
+      of scope.
+
+# --- Real source ambiguities -----------------------------------------
+knownConflicts:
+  - between:
+      - "§3(i) late-delivery cap: 'not to exceed 15 percent (15%) of the Price ($2,550,000)'"
+      - "§3(i) per-day cap: 'not to exceed $25,000 per day'"
+    resolution: >
+      These interact but do not conflict — the binding cap is whichever
+      is reached first. An honest executor must compute both and
+      apply the smaller.
+
+  - between:
+      - "§3(iv) '$10,000 per Kg in excess of 20.31 Kg (inclusive of 1kg grace)'"
+      - "The '1 kg grace' reading"
+    resolution: >
+      Two readings: (A) grace is already baked into the 20.31 Kg
+      threshold, so overage kicks in above 20.31; (B) 20.31 is a hard
+      limit and the first 1 kg over is free, so overage kicks in above
+      21.31. The source is ambiguous; an honest IR should flag this.
+
+coverageTargets:
+  critical:
+    - firm-fixed-price
+    - net-10-payment-terms
+    - optional-payload-exercise-window
+  supporting:
+    - optional-payload-unit-price
+    - on-time-delivery-incentive-flat
+    - holdback-amount
+
+# --- Format stress-test findings -------------------------------------
+formatStressTest:
+  - finding: "Most load-bearing clauses are genuinely not modelable with our current IR."
+    detail: >
+      Twelve of the ~14 substantive clauses in this contract required
+      marking as `expectedUnmodeled` with explicit `needs:` notes.
+      This is not because they're unimportant — they are the entire
+      commercial substance of the amendment. It's because our IR has
+      no primitives for: per-day accumulating fees, cap-within-cap,
+      conditional payments, option elections, milestone schedules,
+      force-majeure as a cross-clause modifier, or amendment-over-base
+      layering.
+
+  - finding: "`FeeClause.feeType` is catastrophically wrong here."
+    detail: >
+      None of liquidated delay damages, on-time incentive, early-
+      delivery bonus, power/weight overage, environmental testing
+      surcharge, or holdback-release-refund fit the credit-card
+      enum. Same bug as the engagement letter, larger blast radius.
+
+  - finding: "`FormulaClause` has no way to carry a trigger."
+    detail: >
+      The $204,000 on-time incentive and $680,000 holdback are each
+      formulas the IR can store — but neither has a way to say "fires
+      ONLY IF condition C." The executor that reads our IR cannot
+      tell the difference between an unconditional payment and a
+      conditional one. This is the single most important primitive
+      we're missing, because almost every non-credit-card clause is
+      conditional.
+
+  - finding: "No per-day accumulating primitive."
+    detail: >
+      Both the late-delivery penalty and the early-delivery incentive
+      accumulate per day. Our credit-card executor does month-step
+      interest accrual, but it's hardcoded inside `executor.ts`, not
+      a first-class IR primitive. A general procurement engine would
+      need `accumulate(per: day, rate: $8500, condition: delivered=false, cap: min(15% * price, $25000 * days))`.
+
+  - finding: "Compound durations (14 months + 60 days grace) are not expressible."
+    detail: >
+      `TemporalRule` is a single type + value. No sum/offset
+      combinator. Grace periods are a universal contract pattern
+      (every credit card has one, every procurement has one, every
+      lease has one).
+
+  - finding: "No amendment / base-agreement layering."
+    detail: >
+      This IS an amendment (§17 explicitly defers to the 2004
+      Procurement Agreement for most terms). Our IR treats each
+      Markdown file as a standalone contract. For held-out contracts
+      that are amendments, this is a structural blind spot.
+
+  - finding: "Partial coverage is the correct answer for this contract."
+    detail: >
+      The honest IR is: ~6 modeled flat-amount clauses + ~15 unmodeled
+      stubs + a note that milestone/delivery/warranty modeling is
+      future work. The brief explicitly endorses this pattern ("show
+      real computation and honest limits, not pretend the contract is
+      fully formalized"). What's NOT honest is silently dropping the
+      unmodeled clauses or fabricating force-fit credit-card-shaped
+      placeholders.

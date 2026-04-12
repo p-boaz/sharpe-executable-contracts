@@ -1,4 +1,15 @@
-export type ClauseKind = "obligation" | "formula" | "fee" | "default" | "condition" | string;
+// Path B shape. All clauses carry a `semanticTag` + `effect`; the effect's
+// discriminator lives on `effect.kind`. The old top-level `kind` is kept as an
+// optional alias so legacy artifacts still parse, but new reads should look at
+// `effect.kind`.
+export type EffectKind =
+  | "payment"
+  | "obligation"
+  | "formula"
+  | "accumulation"
+  | "indemnification"
+  | "default"
+  | "unmodeled";
 
 export interface Expr {
   op: string;
@@ -7,22 +18,56 @@ export interface Expr {
   args?: Expr[];
 }
 
+export interface BoolExpr {
+  op: string;
+  left?: string | number | boolean | BoolExpr;
+  right?: string | number | boolean | BoolExpr;
+  args?: BoolExpr[];
+}
+
+export interface TemporalRule {
+  type?: string;
+  value?: string | number;
+  anchor?: string;
+  direction?: string;
+}
+
+export interface Effect {
+  kind: EffectKind;
+  // payment
+  payer?: string;
+  payee?: string;
+  amount?: Expr;
+  cap?: Expr;
+  assetKind?: string;
+  // obligation
+  actor?: string;
+  action?: string;
+  due?: TemporalRule;
+  curePeriod?: TemporalRule;
+  // formula
+  outputVar?: string;
+  expr?: Expr;
+  // accumulation
+  per?: string;
+  rate?: Expr;
+  // indemnification
+  indemnifier?: string;
+  indemnitee?: string;
+  scope?: string;
+  carveOuts?: string[];
+  // default
+  consequences?: string[];
+}
+
 export interface Clause {
   id: string;
-  kind: ClauseKind;
   title?: string;
   modeled?: boolean;
   sourceText?: string;
-  actor?: string;
-  action?: string;
-  due?: { type?: string; value?: string };
-  outputVar?: string;
-  expr?: Expr;
-  feeType?: string;
-  amountType?: string;
-  amountValue?: number;
-  triggerDescription?: string;
-  consequences?: string[];
+  semanticTag?: string;
+  condition?: BoolExpr;
+  effect?: Effect;
 }
 
 export interface Party { id: string; name: string; role: string; }

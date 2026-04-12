@@ -3,10 +3,12 @@ import type { ExecutionResult } from "../types/execution.js";
 import type { ContractIR } from "../types/ir.js";
 import type { Archetype } from "./archetypes.js";
 
-function feeClauseId(ir: ContractIR, feeType: "late_payment" | "over_limit"): string | undefined {
+// Resolve the id of a fee clause by semantic tag under the Path B IR.
+// `late_payment_fee` and `over_limit_fee` are the canonical credit-card tags
+// emitted by the heuristic extractor.
+function feeClauseId(ir: ContractIR, semanticTag: string): string | undefined {
   return ir.clauses.find(
-    (c): c is Extract<ContractIR["clauses"][number], { kind: "fee" }> =>
-      c.kind === "fee" && c.feeType === feeType,
+    (c) => c.effect.kind === "payment" && c.semanticTag === semanticTag,
   )?.id;
 }
 
@@ -33,9 +35,9 @@ export function validateArchetype(
     if (!hasLatePayment) {
       return "late-payment archetype requires a payment event after dueDate";
     }
-    const lateFeeId = feeClauseId(ir, "late_payment");
+    const lateFeeId = feeClauseId(ir, "late_payment_fee");
     if (!lateFeeId) {
-      return "late-payment archetype requires IR to model a late_payment fee clause";
+      return "late-payment archetype requires IR to model a late_payment_fee clause";
     }
     if (!hasFeeForClause(execution, lateFeeId)) {
       return "late-payment archetype requires execution ledger to contain a late-fee entry";
@@ -54,9 +56,9 @@ export function validateArchetype(
     if (purchaseTotal <= limit) {
       return `over-limit archetype requires purchases > creditLimit (purchases=${purchaseTotal}, limit=${limit})`;
     }
-    const overLimitFeeId = feeClauseId(ir, "over_limit");
+    const overLimitFeeId = feeClauseId(ir, "over_limit_fee");
     if (!overLimitFeeId) {
-      return "over-limit archetype requires IR to model an over_limit fee clause";
+      return "over-limit archetype requires IR to model an over_limit_fee clause";
     }
     if (!hasFeeForClause(execution, overLimitFeeId)) {
       return "over-limit archetype requires execution ledger to contain an over-limit-fee entry";
@@ -82,7 +84,7 @@ export function validateArchetype(
         return "on-time archetype must not include a rent payment after rentDueDate";
       }
     }
-    const lateFeeId = feeClauseId(ir, "late_payment");
+    const lateFeeId = feeClauseId(ir, "late_payment_fee");
     if (lateFeeId && hasFeeForClause(execution, lateFeeId)) {
       return "on-time archetype must not produce a late-fee ledger entry";
     }

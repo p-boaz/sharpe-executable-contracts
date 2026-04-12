@@ -1,0 +1,375 @@
+# Expected IR content for the Sequa Corporation Employment Agreement.
+# Not a hackathon-spec contract (extra sample). Included to exercise
+# Path B's shape on a compensation + restrictive-covenants contract.
+
+contractId: sequa-employment-agreement-2005
+contractFile: contracts/Sequa-employment-agreement-2005.md
+family: employment
+
+expectedParties:
+  - role: employer
+    name: "Sequa Corporation"
+  - role: employee
+    name: "[REDACTED — Vice President and Controller]"
+
+# --- Modeled expectations --------------------------------------------
+expectedClauses:
+  - id: employment-term-one-year
+    intent: "Employment Term runs 1 year from Effective Date (May 31, 2005)."
+    sourceQuote: "continue for a term of one (1) year, unless such employment is terminated sooner"
+    mustMatch:
+      semanticTag: employment_term
+      modeled: true
+      effect:
+        kind: obligation
+        actor: employer
+        action: "employ Employee as VP and Controller"
+        due:
+          type: months
+          value: 12
+          anchor: "effective_date"
+
+  - id: base-salary
+    intent: "Base salary of at least $192,608/year, paid on normal payroll dates."
+    sourceQuote: "the Company shall pay the Employee an annual base salary of not less than $192,608.00, to be paid on normal payroll dates"
+    mustMatch:
+      semanticTag: recurring_base_salary
+      modeled: true
+      condition:
+        op: eq
+        left: "employedDuringPayPeriod"
+        right: true
+      effect:
+        kind: payment
+        payer: employer
+        payee: employee
+        amount:
+          op: const
+          value: 192608
+          # Annual amount; scenario data prorates to pay-period by
+          # multiplying by fraction_of_year_worked.
+    note: >
+      Shape issue: `payment` describes a one-shot transfer. Salary is
+      recurring. Path B has no recurring-payment primitive; the IR
+      captures the annual rate and relies on the scenario/executor to
+      fire the clause per pay-period. Honest but lossy.
+
+  - id: without-cause-termination-notice
+    intent: "Company must give 2 weeks' written notice to terminate without Cause, or pay 2 weeks' salary in lieu."
+    sourceQuote: "by providing the Employee with written notice of termination at least two (2) weeks prior to the effective date of such termination, or by paying the Employee two (2) weeks' pay in lieu of notice"
+    mustMatch:
+      semanticTag: without_cause_termination_notice
+      modeled: true
+      condition:
+        op: eq
+        left: "terminationReason"
+        right: "without_cause"
+      effect:
+        kind: obligation
+        actor: employer
+        action: "provide 2 weeks' written notice, or pay 2 weeks' salary in lieu"
+        due:
+          type: calendar_days
+          value: 14
+          anchor: "termination_effective_date"
+          direction: before
+
+  - id: without-cause-severance-twelve-months
+    intent: "On Without Cause termination, Company pays 12 months of base salary as severance, subject to signed general release."
+    sourceQuote: "An amount equal to twelve (12) months of Employee's then applicable base salary, provided Employee executes an agreement and general release"
+    mustMatch:
+      semanticTag: without_cause_severance
+      modeled: true
+      condition:
+        op: and
+        args:
+          - { op: eq, left: "terminationReason", right: "without_cause" }
+          - { op: eq, left: "generalReleaseExecuted", right: true }
+      effect:
+        kind: payment
+        payer: employer
+        payee: employee
+        amount:
+          op: var
+          name: "annualBaseSalary"
+          # Equals the current base-salary rate at time of termination,
+          # which may have been raised above the $192,608 floor.
+
+  - id: employee-voluntary-termination-notice
+    intent: "Employee must give 2 weeks' written notice for voluntary termination (during or after Employment Term)."
+    sourceQuote: "terminate employment hereunder at any time by providing the Company with written notice of termination at least two (2) weeks prior to the effective date"
+    mustMatch:
+      semanticTag: employee_voluntary_termination_notice
+      modeled: true
+      effect:
+        kind: obligation
+        actor: employee
+        action: "provide 2 weeks' written notice"
+        due:
+          type: calendar_days
+          value: 14
+          anchor: "termination_effective_date"
+          direction: before
+
+  - id: cause-termination-immediate
+    intent: "Company may terminate for Cause immediately and without prior notice."
+    sourceQuote: "The Company may terminate Employee's employment hereunder at any time for Cause, immediately and without prior notice"
+    mustMatch:
+      semanticTag: cause_termination
+      modeled: true
+      condition:
+        op: eq
+        left: "terminationReason"
+        right: "cause"
+      effect:
+        kind: default
+        consequences:
+          - "Employment terminates immediately upon Company's determination of Cause"
+          - "No severance owed beyond accrued unpaid salary and vested benefits"
+          - "Stock options exercise window limited per option plan"
+
+  - id: non-compete-one-year
+    intent: "Employee is subject to a 1-year non-compete after termination, with geographic scope of US + 20 named countries."
+    sourceQuote: "for so long as he is employed by the Company and for a period of one (1) year after such employment ends, whether voluntarily or involuntarily, Employee will not, without the express written consent of the Vice Chairman and Chief Executive Officer of the Company, directly or indirectly, own, manage, operate or control, or be employed"
+    mustMatch:
+      semanticTag: non_compete_restriction
+      modeled: true
+      effect:
+        kind: obligation
+        actor: employee
+        action: "refrain from competing businesses in defined geographic scope"
+        due:
+          type: months
+          value: 12
+          anchor: "termination_date"
+          direction: after
+
+  - id: non-compete-extension-payment
+    intent: "If Company elects to extend non-compete beyond 1 year (Company's sole discretion), Company must pay Employee's base salary for the extension period."
+    sourceQuote: "If the Company elects, in its sole discretion, to hold Employee to the non-competition restriction set forth in this Subsection... after the one year provision then the Company shall pay to Employee an amount equal to Employee's base salary"
+    mustMatch:
+      semanticTag: non_compete_extension_salary
+      modeled: true
+      condition:
+        op: eq
+        left: "companyElectedNonCompeteExtension"
+        right: true
+      effect:
+        kind: payment
+        payer: employer
+        payee: employee
+        amount:
+          op: var
+          name: "annualBaseSalary"
+          # Duration of payment tied to the extension period.
+    note: >
+      Interesting conditional payment — it's the Company's discretionary
+      extension that triggers continued salary, creating a real option
+      for the Company to buy additional non-compete protection.
+
+  - id: non-solicit-customers-one-year
+    intent: "Employee may not solicit customers for 1 year after termination."
+    sourceQuote: "for a period of one (1) year following such termination, directly or indirectly, solicit or initiate contact with any customer, former customer or prospective customer"
+    mustMatch:
+      semanticTag: non_solicit_customers
+      modeled: true
+      effect:
+        kind: obligation
+        actor: employee
+        action: "refrain from soliciting customers, former customers, and prospective customers"
+        due:
+          type: months
+          value: 12
+          anchor: "termination_date"
+          direction: after
+
+  - id: non-solicit-employees-one-year
+    intent: "Employee may not solicit Company employees or contractors for 1 year after termination."
+    sourceQuote: "for a period of one (1) year thereafter, Employee shall not, either on his own account or for others, directly or indirectly, solicit, or endeavor to cause any employee or independent contractor of the Company"
+    mustMatch:
+      semanticTag: non_solicit_employees
+      modeled: true
+      effect:
+        kind: obligation
+        actor: employee
+        action: "refrain from soliciting Company employees and independent contractors"
+        due:
+          type: months
+          value: 12
+          anchor: "termination_date"
+          direction: after
+
+# --- Honest-partial expectations -------------------------------------
+expectedUnmodeled:
+  - intent: "Cause definition (9 enumerated grounds: willful non-performance, misconduct, crime conviction, covenant breach, etc.)."
+    sourceHeading: "§6(c)"
+    note: "Structured definition; modelable but not computational."
+
+  - intent: "Disability definition and termination-on-Disability trigger."
+    sourceHeading: "§6(b)"
+
+  - intent: "Death-triggered compensation: accrued salary + vacation + benefits entitlement to estate."
+    sourceHeading: "§8(a)"
+
+  - intent: "Disability-triggered compensation: accrued unpaid salary + benefits."
+    sourceHeading: "§8(b)"
+
+  - intent: "Stock Options plan (1998 Key Employees Stock Option Plan) — exercise rules, vesting."
+    sourceHeading: "§5(d)"
+    note: "External plan document governs."
+
+  - intent: "Medical/Dental premium continuation through severance period."
+    sourceHeading: "§8(d)(iv)"
+
+  - intent: "COBRA election rights after severance period."
+    sourceHeading: "§8(d)(iv) tail"
+
+  - intent: "Automobile transfer-of-ownership on Without Cause termination."
+    sourceHeading: "§8(d)(vi)"
+
+  - intent: "Laptop transfer-of-ownership on Without Cause termination."
+    sourceHeading: "§8(d)(vii)"
+
+  - intent: "Confidentiality and Trade Secrets — perpetual obligation (survives termination for 'so long as information remains confidential')."
+    sourceHeading: "§9(a)–(b)"
+    needs: >
+      Perpetual / open-ended temporal duration. Path B has no
+      "perpetual" or "until public" temporal type. Honest unmodeled.
+
+  - intent: "Intellectual Property assignment (all IP created during employment assigned to Company)."
+    sourceHeading: "§11"
+
+  - intent: "Conflict of Interest policy — financial interests in suppliers/customers/prospects require disclosure and approval."
+    sourceHeading: "§10"
+
+  - intent: "Enforcement remedies (injunctions, attorneys' fees) for Section 9 covenant breaches."
+    sourceHeading: "§9(f)"
+
+  - intent: "Management Incentive Bonus Plan — external plan document."
+    sourceHeading: "§5(c)"
+
+  - intent: "Benefits plans (health, dental, disability, life, 401K, SERP) — reference to external plan documents."
+    sourceHeading: "§5(b)"
+
+  - intent: "Vacation accrual and payout at termination."
+    sourceHeading: "§5(f)"
+
+  - intent: "At-will status after Employment Term expiration."
+    sourceHeading: "§7"
+
+  - intent: "Governing law: New York; no conflict-of-laws."
+    sourceHeading: "§12"
+
+# --- Real source ambiguities -----------------------------------------
+knownConflicts:
+  - between:
+      - "§5(a): 'an annual base salary of not less than $192,608.00'"
+      - "§5(a): 'Employee's base salary may be increased on an annual basis during the term of this Agreement, at the sole discretion of the Company'"
+    resolution: >
+      The $192,608 is a floor, not a fixed value. An honest IR
+      captures it as a lower bound; the effective salary at any
+      scenario time is `max($192,608, actualSalaryAtTime)`. The
+      expectation file uses the literal $192,608 because the scenario
+      data default is no raise.
+
+  - between:
+      - "§9(c): 'a period of one (1) year after such employment ends'"
+      - "§9(c): Company may extend at sole discretion, with base-salary continuation"
+    resolution: >
+      Not a contradiction, but the effective non-compete duration is
+      `max(12 months, company-elected extension)`. Scenario data must
+      either fix the duration or model both cases.
+
+  - between:
+      - "§8(d)(iii): severance requires execution of general release"
+      - "§8(d)(iii): release 'shall not require Employee to waive (x) any right to indemnification... or (y) any right to vested employee benefits'"
+    resolution: >
+      Severance is conditional on a release whose exact form is
+      Company-drafted but subject to two scope limits. The IR
+      condition `generalReleaseExecuted = true` is a simplification;
+      in reality the release must conform to these two limits.
+
+coverageTargets:
+  critical:
+    - base-salary
+    - without-cause-severance-twelve-months
+    - non-compete-one-year
+    - cause-termination-immediate
+  supporting:
+    - employment-term-one-year
+    - without-cause-termination-notice
+    - employee-voluntary-termination-notice
+    - non-compete-extension-payment
+    - non-solicit-customers-one-year
+    - non-solicit-employees-one-year
+
+# --- Path B shape stress-test findings --------------------------------
+formatStressTest:
+  - finding: "Recurring payments have no native primitive."
+    status: minor-shape-fix
+    detail: >
+      Base salary is inherently recurring (paid bi-weekly at an
+      annual rate). Path B's `payment` is one-shot. Under the
+      current shape, a recurring-salary clause stores the annual rate
+      and the executor/scenario fires the clause per pay-period.
+      Works, but loses the recurrence semantics.
+      OPTIONS:
+        (a) Convention: use `semanticTag: recurring_*` + separate
+            `recurrenceInterval?` field on the Clause. Small
+            extension.
+        (b) A distinct `recurring_payment` effect kind with
+            `{ amount, interval: "bi-weekly" | "monthly" | "annually" }`.
+        (c) Leave recurrence to the scenario; IR stores the rate only.
+      Recommend (c) for now. Salary, rent, and periodic fees all
+      share this shape — solving it once is reasonable, but not
+      blocking for the MVP. Scenarios already model recurrence by
+      emitting per-period events.
+
+  - finding: "Perpetual / open-ended durations have no primitive."
+    status: known-gap
+    detail: >
+      Confidentiality obligations run "for so long as pertinent
+      information remains confidential." That is open-ended. Path B's
+      `TemporalRule` requires a concrete value. Honest unmodeled is
+      the right answer — most employment contracts have a perpetual
+      confidentiality obligation. Could revisit with a
+      `type: "open_ended"` variant if held-out contracts need it.
+
+  - finding: "Conditional payment with Company's sole-discretion trigger works cleanly."
+    status: confirmed
+    detail: >
+      The non-compete extension payment (§9(c)) has a condition
+      `companyElectedNonCompeteExtension = true`, an employer
+      election. Path B's `condition: BoolExpr` accepts variables
+      backed by scenario data. Good signal that the primitive
+      handles discretionary triggers naturally.
+
+  - finding: "Multi-reason termination now seen on 3 contracts (service, employment, lease)."
+    status: confirmed
+    detail: >
+      Sequa's §6 has 6 distinct termination triggers (death,
+      disability, cause, without-cause, employee-voluntary-during,
+      employee-voluntary-after). Each encoded as a separate clause
+      with its own `semanticTag` and condition keyed to
+      `terminationReason`. Same pattern that worked for OneAmerica
+      and Galleria. Reinforces the finding that multi-triggered
+      termination is workable under Path B without an aggregator
+      primitive.
+
+  - finding: "`direction: before | after` on TemporalRule is essential."
+    status: confirmed
+    detail: >
+      This contract uses both directions: "2 weeks' notice before
+      termination" (direction: before) and "1 year after termination"
+      (direction: after). Without the direction field, the anchor
+      reference is ambiguous. Worth adding to the Path B spec — it's
+      a cheap 1-line field that unblocks correct temporal semantics.
+
+  - finding: "`var(annualBaseSalary)` handles salary-at-time-of-event naturally."
+    status: confirmed
+    detail: >
+      The severance is "12 months of Employee's THEN APPLICABLE base
+      salary" — so the amount depends on whether the $192,608 floor
+      got raised. Encoding as `var("annualBaseSalary")` lets the
+      scenario data supply the value at termination time. This is
+      exactly the use case `var` was designed for, and it works.

@@ -1,9 +1,18 @@
-import type { BoolExpr, Clause, ContractIR, Expr, TemporalRule } from "../types/ir.js";
+import type { BoolExpr, Clause, ContractIR, Effect, Expr, TemporalRule } from "../types/ir.js";
 
 function temporalToText(rule: TemporalRule): string {
-  if (rule.type === "on_date") return `on ${String(rule.value)}`;
-  if (rule.type === "business_days") return `within ${String(rule.value)} business day(s)`;
-  return `within ${String(rule.value)} calendar day(s)`;
+  const anchorText = rule.anchor ? ` of ${rule.anchor}` : "";
+  const directionText =
+    rule.direction === "before" ? " before" : rule.direction === "after" ? " after" : "";
+  const graceText = rule.graceAfter ? ` (grace: ${temporalToText(rule.graceAfter)})` : "";
+  if (rule.type === "on_date") return `on ${String(rule.value)}${graceText}`;
+  if (rule.type === "business_days")
+    return `within ${String(rule.value)} business day(s)${directionText}${anchorText}${graceText}`;
+  if (rule.type === "months")
+    return `within ${String(rule.value)} month(s)${directionText}${anchorText}${graceText}`;
+  if (rule.type === "years")
+    return `within ${String(rule.value)} year(s)${directionText}${anchorText}${graceText}`;
+  return `within ${String(rule.value)} calendar day(s)${directionText}${anchorText}${graceText}`;
 }
 
 function exprToText(expr: Expr): string {
@@ -29,26 +38,71 @@ function exprToText(expr: Expr): string {
   }
 }
 
+function boolOperandToText(operand: string | number | boolean | BoolExpr | undefined): string {
+  if (operand == null) return "";
+  if (typeof operand === "string" || typeof operand === "number" || typeof operand === "boolean") {
+    return String(operand);
+  }
+  return boolExprToText(operand);
+}
+
 function boolExprToText(expr: BoolExpr): string {
   switch (expr.op) {
     case "eq":
-      return `${String(expr.left)} == ${String(expr.right)}`;
+      return `${boolOperandToText(expr.left)} == ${boolOperandToText(expr.right)}`;
     case "neq":
-      return `${String(expr.left)} != ${String(expr.right)}`;
+      return `${boolOperandToText(expr.left)} != ${boolOperandToText(expr.right)}`;
     case "gt":
-      return `${String(expr.left)} > ${String(expr.right)}`;
+      return `${boolOperandToText(expr.left)} > ${boolOperandToText(expr.right)}`;
     case "gte":
-      return `${String(expr.left)} >= ${String(expr.right)}`;
+      return `${boolOperandToText(expr.left)} >= ${boolOperandToText(expr.right)}`;
     case "lt":
-      return `${String(expr.left)} < ${String(expr.right)}`;
+      return `${boolOperandToText(expr.left)} < ${boolOperandToText(expr.right)}`;
     case "lte":
-      return `${String(expr.left)} <= ${String(expr.right)}`;
+      return `${boolOperandToText(expr.left)} <= ${boolOperandToText(expr.right)}`;
     case "and":
       return `(${(expr.args || []).map(boolExprToText).join(" AND ")})`;
     case "or":
       return `(${(expr.args || []).map(boolExprToText).join(" OR ")})`;
+    case "not":
+      return `NOT ${(expr.args || []).map(boolExprToText).join("")}`;
     default:
       return "condition";
+  }
+}
+
+function effectToText(effect: Effect): string {
+  switch (effect.kind) {
+    case "payment": {
+      const assetText = effect.assetKind ? ` [${effect.assetKind}]` : "";
+      const capText = effect.cap ? ` (capped at ${exprToText(effect.cap)})` : "";
+      return `${effect.payer} pays ${effect.payee} ${exprToText(effect.amount)}${assetText}${capText}`;
+    }
+    case "obligation": {
+      const dueText = effect.due ? ` ${temporalToText(effect.due)}` : "";
+      const cureText = effect.curePeriod
+        ? ` (cure period: ${temporalToText(effect.curePeriod)})`
+        : "";
+      return `${effect.actor} must ${effect.action}${dueText}${cureText}`;
+    }
+    case "formula": {
+      const capText = effect.cap ? ` (capped at ${exprToText(effect.cap)})` : "";
+      return `${effect.outputVar} is computed as ${exprToText(effect.expr)}${capText}`;
+    }
+    case "accumulation": {
+      const capText = effect.cap ? ` (capped at ${exprToText(effect.cap)})` : "";
+      return `accumulate ${exprToText(effect.rate)} per ${effect.per}${capText}`;
+    }
+    case "indemnification": {
+      const carveOutsText = effect.carveOuts.length
+        ? `; except: ${effect.carveOuts.join(", ")}`
+        : "";
+      return `${effect.indemnifier} indemnifies ${effect.indemnitee} for ${effect.scope}${carveOutsText}`;
+    }
+    case "default":
+      return `default consequences: ${effect.consequences.join("; ") || "see source text"}`;
+    case "unmodeled":
+      return "unmodeled (see source text)";
   }
 }
 
@@ -58,24 +112,9 @@ function clauseToText(clause: Clause): string {
     clause.sourceSpan != null
       ? ` [source:${clause.sourceSpan.start}-${clause.sourceSpan.end}]`
       : "";
-  if (clause.kind === "obligation") {
-    const conditionText = clause.condition ? ` if ${boolExprToText(clause.condition)}` : "";
-    return `${prefix}${clause.id}: ${clause.actor} must ${clause.action} ${temporalToText(clause.due)}${conditionText}.${sourceTrace}`;
-  }
-  if (clause.kind === "formula") {
-    return `${prefix}${clause.id}: ${clause.outputVar} is computed as ${exprToText(clause.expr)}.${sourceTrace}`;
-  }
-  if (clause.kind === "fee") {
-    const amount =
-      clause.amountType === "fixed"
-        ? `$${clause.amountValue.toFixed(2)}`
-        : `${clause.amountValue}%`;
-    return `${prefix}${clause.id}: ${clause.feeType} fee is ${amount} when ${clause.triggerDescription}.${sourceTrace}`;
-  }
-
-  return `${prefix}${clause.id}: default is triggered when ${clause.triggerDescription}. Consequences: ${clause.consequences.join(
-    "; ",
-  )}.${sourceTrace}`;
+  const conditionText = clause.condition ? ` if ${boolExprToText(clause.condition)}` : "";
+  const tagText = clause.semanticTag ? ` {${clause.semanticTag}}` : "";
+  return `${prefix}${clause.id}${tagText}: ${effectToText(clause.effect)}${conditionText}.${sourceTrace}`;
 }
 
 export function decompileIrToEnglish(ir: ContractIR): string {

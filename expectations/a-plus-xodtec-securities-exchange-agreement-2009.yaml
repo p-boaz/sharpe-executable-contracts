@@ -1,0 +1,282 @@
+# Expected IR content for the A-Plus / Xodtec Securities Exchange
+# Agreement. Hackathon brief tags this "Medium: exchange conditions,
+# reps and warranties."
+#
+# Written in Path B's new shape. The core stress test here is whether
+# a non-cash exchange — shares-for-shares — fits the `payment` effect.
+
+contractId: a-plus-xodtec-securities-exchange-agreement-2009
+contractFile: contracts/A-Plus-Xodtec-securities-exchange-agreement-2009.md
+family: securities-exchange
+
+expectedParties:
+  - role: acquirer
+    name: "A-PLUS INTERNATIONAL, LTD. (Nevada)"
+  - role: target
+    name: "Xodtec Technology Co., Ltd"
+  - role: target_shareholders
+    name: "Xodtec Shareholders (collective)"
+    note: "Individual shareholders are named on signature pages; the IR treats them as a single group."
+
+# --- Modeled expectations --------------------------------------------
+expectedClauses:
+  - id: xodtec-shares-transfer-to-aplus
+    intent: "At Closing, Xodtec Shareholders transfer all issued and outstanding Xodtec shares to A-Plus."
+    sourceQuote: "all of the Xodtec Shares issued and outstanding immediately prior to the Closing Date shall be exchanged for the Exchange Shares"
+    mustMatch:
+      semanticTag: target_share_transfer
+      modeled: true
+      condition:
+        op: eq
+        left: "closingOccurred"
+        right: true
+      effect:
+        kind: payment            # <-- SHAPE ISSUE #3: shares, not cash
+        payer: target_shareholders
+        payee: acquirer
+        amount:
+          op: const
+          value: 1.0             # 100% of Xodtec shares
+        # With Path B's proposed `assetKind?: string` extension:
+        # assetKind: "xodtec_shares_all_classes_fully_diluted"
+
+  - id: aplus-exchange-shares-transfer
+    intent: "At Closing, A-Plus issues approximately 9.375% of its total outstanding equity (fully-diluted) to the Xodtec Shareholders."
+    sourceQuote: "exchange for an aggregate of approximately 9.375% of the total outstanding equity of A-PLUS on a fully-diluted basis (the \"Exchange Shares\")"
+    mustMatch:
+      semanticTag: acquirer_equity_issuance
+      modeled: true
+      condition:
+        op: eq
+        left: "closingOccurred"
+        right: true
+      effect:
+        kind: payment
+        payer: acquirer
+        payee: target_shareholders
+        amount:
+          op: mul
+          args:
+            - { op: const, value: 0.09375 }
+            - { op: var, name: "aplusTotalEquityFullyDiluted" }
+        # With Path B's proposed `assetKind?: string` extension:
+        # assetKind: "a_plus_equity_fully_diluted"
+
+  - id: closing-date
+    intent: "Closing occurs on April 1, 2009 (the date of the Agreement)."
+    sourceQuote: "entered into as of this 1st day of April, 2009 (the \"Closing Date\")"
+    mustMatch:
+      semanticTag: closing_date
+      modeled: true
+      effect:
+        kind: obligation
+        actor: all_parties
+        action: "execute and deliver closing documents"
+        due:
+          type: on_date
+          value: "2009-04-01"
+
+  - id: xodtec-delivers-corporate-records
+    intent: "At Closing, Xodtec delivers corporate minute books, books of account, contracts, records to A-Plus."
+    sourceQuote: "Upon Closing, Xodtec shall deliver to A-PLUS, the originals of the corporate minute books, books of account, contracts, records, and all other books or documents of Xodtec"
+    mustMatch:
+      semanticTag: closing_delivery
+      modeled: true
+      effect:
+        kind: obligation
+        actor: target
+        action: "deliver originals of corporate minute books, books of account, contracts, and records"
+        due:
+          type: on_date
+          value: "closing_date"
+
+  - id: aplus-indemnifies-xodtec
+    intent: "A-Plus indemnifies Xodtec and its officers/agents/directors against losses arising from inaccuracies in Article II representations."
+    sourceQuote: "A-PLUS hereby agrees to indemnify Xodtec and each of the officers, agents and directors of Xodtec... against any loss, liability, claim, damage, or expense... arising out of or based on any inaccuracy appearing in or misrepresentation made in Article II"
+    mustMatch:
+      semanticTag: mutual_indemnification_on_reps
+      modeled: true
+      effect:
+        kind: indemnification
+        indemnifier: acquirer
+        indemnitee: target
+        scope: "losses, liabilities, claims, damages, or expenses arising from inaccuracies or misrepresentations in Article II (A-Plus reps and warranties)"
+        carveOuts: []
+
+  - id: xodtec-indemnifies-aplus
+    intent: "Xodtec indemnifies A-Plus and its officers/agents/directors against losses arising from inaccuracies in Article III representations."
+    sourceQuote: "Xodtec hereby agrees to indemnify A-PLUS and each of the officers, agents and directors of A-PLUS... arising out of or based on any inaccuracy appearing in or misrepresentation made under Article III"
+    mustMatch:
+      semanticTag: mutual_indemnification_on_reps
+      modeled: true
+      effect:
+        kind: indemnification
+        indemnifier: target
+        indemnitee: acquirer
+        scope: "losses, liabilities, claims, damages, or expenses arising from inaccuracies or misrepresentations in Article III (Xodtec reps and warranties)"
+        carveOuts: []
+
+  - id: attorneys-fees-reimbursement
+    intent: "Breaching party reimburses non-breaching party for costs (including attorney's fees) of enforcing the Agreement."
+    sourceQuote: "the breaching party or parties shall reimburse the non-breaching party or parties for all costs, including reasonable attorneys' fees"
+    mustMatch:
+      semanticTag: attorneys_fees_reimbursement
+      modeled: true
+      condition:
+        op: eq
+        left: "partyBreached"
+        right: true
+      effect:
+        kind: payment
+        payer: breaching_party
+        payee: non_breaching_party
+        amount:
+          op: var
+          name: "legalCostsIncurred"
+
+# --- Honest-partial expectations -------------------------------------
+expectedUnmodeled:
+  - intent: "Article II — A-Plus organization, authority, board approval, absence of material changes, no conflicts with other agreements, no pending litigation."
+    sourceHeading: "ARTICLE II REPRESENTATIONS, COVENANTS, AND WARRANTIES OF A-PLUS"
+    note: >
+      ~5 reps, each with sub-points. Modelable as `obligation` clauses
+      representing ongoing covenants, but most are pure representations
+      with no executable trigger. Honest unmodeled.
+
+  - intent: "Article III — Xodtec organization, capitalization, authority, board+shareholder approval, absence of material changes, share ownership."
+    sourceHeading: "ARTICLE III REPRESENTATIONS, COVENANTS, AND WARRANTIES OF XODTEC"
+
+  - intent: "§4.1 — Xodtec Shareholders must authorize the Agreement by written consent prior to Closing."
+    sourceHeading: "Article IV §4.1"
+
+  - intent: "§4.2 — A-Plus members must authorize the Agreement by written consent prior to Closing."
+    sourceHeading: "Article IV §4.2"
+
+  - intent: "§4.3 — Mutual access to properties, books, and records for due diligence."
+    sourceHeading: "Article IV §4.3"
+
+  - intent: "§5.1 — Nevada governing law; AAA arbitration in New York."
+    sourceHeading: "§5.1 Governing Law"
+
+  - intent: "§5.4 — Mutual confidentiality; no public disclosure without other party's consent."
+    sourceHeading: "§5.4 Confidentiality"
+
+  - intent: "§5.5 — Each party bears its own transaction expenses."
+    sourceHeading: "§5.5 Expenses"
+
+  - intent: "§5.9 — Representations and warranties survive Closing."
+    sourceHeading: "§5.9 Survival"
+
+  - intent: "Tax-free reorganization intent under IRC §368(a)."
+    sourceHeading: "Recitals"
+    note: >
+      Tax characterization affects neither execution nor IR content
+      directly, but a complete legal engine would flag it.
+
+# --- Real source ambiguities -----------------------------------------
+knownConflicts:
+  - between:
+      - "Recital: Xodtec is 'a company organized under the laws of the Republic of China'"
+      - "§3.1: Xodtec 'is a corporation duly organized... under the laws of the Country of Poland'"
+    resolution: >
+      These are internally contradictory. The source document has a
+      real drafting error — Xodtec cannot simultaneously be organized
+      under Chinese and Polish law. An honest IR extractor should
+      surface this as a source conflict rather than silently picking
+      one. No way to tell which is correct without external research.
+
+  - between:
+      - "§3.2: 'Xodtec's authorized capitalization consists of _______ (____) shares'"
+      - "Fully-specified capitalization is required for the 9.375% computation to resolve"
+    resolution: >
+      The source has an unfilled blank in the capitalization figure.
+      This is a document-level defect that an honest extractor should
+      flag — the contract is not fully executable as written because
+      a load-bearing number is missing.
+
+  - between:
+      - "Recital: '9.375% of the total outstanding equity'"
+      - "Recital: 'approximately 9.375%'"
+    resolution: >
+      "Approximately" introduces material uncertainty into the
+      exchange ratio. Scenario data must pick a definite value; the
+      expectation file uses 9.375% exactly, which over-precises the
+      source.
+
+coverageTargets:
+  critical:
+    - xodtec-shares-transfer-to-aplus
+    - aplus-exchange-shares-transfer
+    - closing-date
+    - aplus-indemnifies-xodtec
+    - xodtec-indemnifies-aplus
+  supporting:
+    - xodtec-delivers-corporate-records
+    - attorneys-fees-reimbursement
+
+# --- Path B shape stress-test findings --------------------------------
+formatStressTest:
+  - finding: "Non-cash transfers strain `payment` effect."
+    status: blocker-candidate
+    detail: >
+      The core of this contract is a share-for-share swap: Xodtec
+      Shareholders transfer 100% of Xodtec equity in exchange for
+      9.375% of A-Plus fully-diluted equity. Neither side is cash.
+      `payment` currently implies a numeric dollar amount.
+      OPTIONS:
+        (a) Extend `payment` with `assetKind?: string` (defaults to
+            "USD"). For cash contracts, omitting the field works; for
+            this contract, values like "xodtec_shares_all_classes" or
+            "a_plus_equity_fully_diluted" carry the asset semantics.
+            Minimal surface-area addition.
+        (b) Add a `transfer` effect kind distinct from `payment`,
+            reserving `payment` for cash.
+        (c) Model as `obligation` with a free-string action. Works
+            but loses the quantitative semantics (9.375%) and makes
+            it hard for an executor to compute the resulting cap
+            table.
+      My recommendation: (a). `assetKind?: string` costs one optional
+      field and handles cash, shares, and commodities (e.g. ORBCOMM's
+      payloads, if we ever wanted) with the same primitive.
+
+  - finding: "`TemporalRule.value` as string (\"2009-04-01\", \"closing_date\") is already used and works."
+    status: confirmed
+    detail: >
+      Current typing allows `value: number | string`. This contract
+      uses it for absolute dates and for symbolic anchors
+      ("closing_date"). That's fine; worth keeping.
+
+  - finding: "Reps and warranties are genuinely mostly unmodelable."
+    status: confirmed
+    detail: >
+      Articles II and III are the bulk of this contract. They are
+      statements of fact at Closing, not obligations that fire over
+      time. An executor can't "run" a representation. The expectation
+      file correctly marks them unmodeled, and the `indemnification`
+      effect kind on §4.5 is where they become executable: a rep
+      being false triggers the indemnity.
+
+  - finding: "Multi-party roles work without changes."
+    status: confirmed
+    detail: >
+      Three parties (acquirer, target, target_shareholders) fit
+      `Party[]` + open-string `role` cleanly. `payer: "acquirer"`,
+      `indemnifier: "target"` read fine. No structural issue.
+
+  - finding: "`condition: { op: eq, left: \"closingOccurred\", right: true }` is verbose."
+    status: minor-syntax
+    detail: >
+      Many closing-triggered clauses would benefit from a `triggeredAt`
+      sugar primitive ("fires at closing", "fires at termination").
+      Not a blocker — verbose BoolExpr still works. Worth revisiting
+      in a future pass if multiple contracts use closing-keyed
+      conditions heavily.
+
+  - finding: "The source has two real drafting defects."
+    status: documented
+    detail: >
+      The Poland/China contradiction (§3.1 vs recital) and the
+      unfilled capitalization blank (§3.2) are genuine source
+      quality issues. The expectation file flags them under
+      `knownConflicts`. No IR change needed — but a future extractor
+      could helpfully flag these automatically.
