@@ -132,6 +132,19 @@ function findSnippetFromLabel(text: string, pattern: RegExp): string | undefined
   return text.slice(start, end).replace(/\s+/g, " ").trim();
 }
 
+function findAllSnippetsFromLabel(text: string, pattern: RegExp): string[] {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const globalPattern = new RegExp(pattern.source, flags);
+  const snippets: string[] = [];
+  for (const match of text.matchAll(globalPattern)) {
+    if (match.index == null) continue;
+    const start = match.index;
+    const end = Math.min(text.length, start + 280);
+    snippets.push(text.slice(start, end).replace(/\s+/g, " ").trim());
+  }
+  return snippets;
+}
+
 interface NormalizedSourceIndex {
   normalized: string;
   rawByNormalized: number[];
@@ -306,23 +319,25 @@ function extractDefinitions(text: string): Definition[] {
 }
 
 function extractFixedFee(text: string, label: RegExp): number | undefined {
-  const snippet = findSnippetFromLabel(text, label);
-  if (!snippet || /\bnone\b/i.test(snippet)) return undefined;
-
-  const match = snippet.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/);
-  if (!match?.[1]) return undefined;
-
-  return Number.parseFloat(match[1]);
+  for (const snippet of findAllSnippetsFromLabel(text, label)) {
+    const match = snippet.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/);
+    if (!match?.[1] || match.index == null) continue;
+    const none = snippet.match(/\bnone\b/i);
+    if (none && none.index != null && none.index < match.index) continue;
+    return Number.parseFloat(match[1]);
+  }
+  return undefined;
 }
 
 function extractPercentFee(text: string, label: RegExp): number | undefined {
-  const snippet = findSnippetFromLabel(text, label);
-  if (!snippet || /\bnone\b/i.test(snippet)) return undefined;
-
-  const match = snippet.match(/([0-9]+(?:\.[0-9]+)?)\s*%/);
-  if (!match?.[1]) return undefined;
-
-  return Number.parseFloat(match[1]);
+  for (const snippet of findAllSnippetsFromLabel(text, label)) {
+    const match = snippet.match(/([0-9]+(?:\.[0-9]+)?)\s*%/);
+    if (!match?.[1] || match.index == null) continue;
+    const none = snippet.match(/\bnone\b/i);
+    if (none && none.index != null && none.index < match.index) continue;
+    return Number.parseFloat(match[1]);
+  }
+  return undefined;
 }
 
 function parseMoney(raw: string | undefined): number | undefined {

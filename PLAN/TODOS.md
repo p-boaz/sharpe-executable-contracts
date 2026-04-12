@@ -165,6 +165,33 @@ These tasks support the hackathon's generality requirement once P0 is in place.
 
 **Outcome:** Generated `out/lease-run/` via `pnpm run run --contract Galleria… --no-llm` (2 modeled + 1 unmodeled clauses, 1 breach, ending balance $30,144.22). Loaded in the dossier at `localhost:3000/?run=lease-run` — top bar, parties, inputs row, scenario card, execution ribbon, ledger, obligations/breaches, and IR drawer all render without runtime errors. Clause kinds `obligation` / `formula` / `default` all display correctly; the one unmodeled clause renders as a normal card. Browser console is clean apart from a favicon 404.
 
+### [ ] T19 — Broaden unmodeled-clause capture for credit-card + lease runs
+
+**Goal:** Surface more of each contract's real section structure as `modeled: false` clauses, so the judge-facing output honestly shows the scope boundary on the two canonical contracts (not just on unsupported families).
+
+**Why this matters:** The killswitch in `addGenericUnmodeledClauses` (`src/pipeline/extract-ir.ts`) — `if (clauses.some((clause) => clause.modeled)) return;` — means the function fires *only* when nothing was modeled. As a result, the Galleria lease output has 3 clauses total (2 modeled + 1 cherry-picked default) instead of something like "2 modeled + 6–8 honestly-named unmodeled sections (insurance, maintenance, assignment, holding-over, …)" that a reader of the source would expect. Same on the WesTex credit card (8 clauses today vs. ~12–15 if we also capture arbitration, privacy, disclosure headings). CLAUDE.md says "Be honest about scope limits and unsupported clause patterns" — today that's only honored on contracts we can't model at all. Fixing it makes the demo honest even on the contracts the heuristic *does* handle.
+
+**Shape of the change:**
+
+- In `addGenericUnmodeledClauses`, replace the killswitch with a policy that always tries to add section-heading unmodeled clauses up to a higher cap (e.g. 6–8 total headings), deduping against titles of already-modeled clauses.
+- Keep the existing "Unsupported contract terms" summary fallback for contracts where *no* headings were collected (so securities exchange / pure-prose contracts still get a marker).
+- Keep `modeled: false` and use `action: "See source text for unsupported clause: <title>"` so they read honestly in English decompilation.
+
+**Scope guard:**
+
+- Do not add a new `kind: "unmodeled"` to the type system — the convention is `modeled: false` on a regular kind. Preserve that.
+- Do not change behavior for contracts that currently hit the `modeled: 0` branch (employment, securities, service) except possibly raising their cap.
+- Do not touch archetype validators, scenario generation, or output layout.
+- Expect `clauseCount` on the two canonical contracts to increase, shifting `english.txt` and determinism hashes. Land **after** the contract-first storage refactor so baselines move once.
+
+**Done when:**
+
+- Fresh `pnpm run run` on WesTex credit-card shows ≥ 10 total clauses with ≥ 6 `modeled: false` entries carrying real section titles (not just the generic fallback).
+- Fresh `pnpm run run` on Galleria lease shows ≥ 6 total clauses with ≥ 4 `modeled: false` section entries.
+- `extractor returns honest modeled/unmodeled mix on lease sample` test still passes and continues to assert `modeledClauseCount < clauseCount`.
+- `pnpm run determinism --no-llm` still reports IR / scenario / execution / English all stable on both contracts after regeneration.
+- `pnpm test` green.
+
 ---
 
 ## P2 — Strengthen the executor enough to support real contract logic
