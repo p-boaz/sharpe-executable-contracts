@@ -25,7 +25,7 @@ When closing a TODO, append an **Outcome:** line under its `Done when:` block, n
 
 These are the highest-priority tasks because they directly determine whether the repo meets the hackathon ask.
 
-### [ ] T1 — Honest partial extraction instead of hardcoded full modeling
+### [x] T1 — Honest partial extraction instead of hardcoded full modeling
 
 **Goal:** The extractor should produce a sparse, truthful IR from contract Markdown instead of pretending the entire selected shape is modeled.
 
@@ -38,9 +38,9 @@ These are the highest-priority tasks because they directly determine whether the
 - modeled coverage in the decompiler reflects reality
 - the IR remains small, inspectable, and deterministic
 
-**Current gap:** `src/pipeline/extract-ir.ts` still builds a fixed WesTex-shaped IR.
+**Outcome:** Shipped IR-responsive fallback extraction with explicit unmodeled placeholders and broader heading-based degradation in `src/pipeline/extract-ir.ts`.
 
-### [ ] T2 — Make scenario generation responsive to the IR
+### [x] T2 — Make scenario generation responsive to the IR
 
 **Goal:** Generate scenario data that matches the extracted contract shape instead of always producing the same credit-card scenario.
 
@@ -53,9 +53,9 @@ These are the highest-priority tasks because they directly determine whether the
 - the fallback path stays deterministic but is visibly tied to the IR, not to one contract file
 - `scenario.json` makes the chosen assumptions explicit
 
-**Current gap:** `src/pipeline/generate-scenario.ts` still emits one canned credit-card timeline.
+**Outcome:** Scenario generation now derives fallback family/events from IR modeled clauses and writes explicit IR-linked assumptions/state in `src/pipeline/generate-scenario.ts`, with held-out LLM-path guidance in `README.md`.
 
-### [ ] T3 — Fix determinism to test repeated runs, not repeated stringification
+### [x] T3 — Fix determinism to test repeated runs, not repeated stringification
 
 **Goal:** Make `determinism` prove something real about the executable-to-English path.
 
@@ -68,9 +68,9 @@ These are the highest-priority tasks because they directly determine whether the
 - any normalization rules are explicit
 - the result artifact makes clear what was compared
 
-**Current gap:** `src/main.ts` currently compares two decompiles from a single pipeline result.
+**Outcome:** `determinism` now runs the full pipeline twice and compares IR/scenario/execution/English with explicit hashes in `src/main.ts`.
 
-### [ ] T4 — Replace fake extraction metadata with deterministic, meaningful metadata
+### [x] T4 — Replace fake extraction metadata with deterministic, meaningful metadata
 
 **Goal:** Remove the fake `1970-01-01` extraction timestamp and replace it with stable metadata derived from the input.
 
@@ -82,7 +82,7 @@ These are the highest-priority tasks because they directly determine whether the
 - the old fake timestamp is removed everywhere
 - README and any output examples stay in sync
 
-**Current gap:** `src/pipeline/extract-ir.ts` still writes `extractedAt: "1970-01-01T00:00:00.000Z"`.
+**Outcome:** Replaced fake timestamps with deterministic `extractionHash` metadata in `src/types/ir.ts`, `src/pipeline/extract-ir.ts`, and `README.md`.
 
 ---
 
@@ -90,7 +90,7 @@ These are the highest-priority tasks because they directly determine whether the
 
 These tasks support the hackathon's generality requirement once P0 is in place.
 
-### [ ] T5 — Add a second contract path and make it degrade honestly
+### [x] T5 — Add a second contract path and make it degrade honestly
 
 **Goal:** Show that the repo is not just a WesTex demo.
 
@@ -105,7 +105,9 @@ These tasks support the hackathon's generality requirement once P0 is in place.
 
 **Suggested target:** the bundled office lease sample is a better proof of generality than adding another credit-card sample.
 
-### [ ] T6 — Add optional clause traceability from source -> IR -> English
+**Outcome:** Added a lease-family path on the Galleria sample with modeled monthly-rent execution plus explicit unmodeled default context in `src/pipeline/extract-ir.ts`, `src/pipeline/generate-scenario.ts`, and `src/core/executor.ts`.
+
+### [x] T6 — Add optional clause traceability from source -> IR -> English
 
 **Goal:** Preserve source spans so the demo can show where executable clauses came from.
 
@@ -117,6 +119,8 @@ These tasks support the hackathon's generality requirement once P0 is in place.
 - the offsets are available in the IR artifact
 - regenerated English can be linked back to the original source clause when useful
 
+**Outcome:** Added deterministic `sourceSpan` offsets per clause in `src/pipeline/extract-ir.ts`/`src/types/ir.ts` and surfaced source markers in regenerated English in `src/core/decompiler.ts`.
+
 **Scope note:** This is valuable, but it is secondary to executability, scenario generation, and determinism.
 
 ---
@@ -125,7 +129,7 @@ These tasks support the hackathon's generality requirement once P0 is in place.
 
 These tasks increase expressiveness, but should only follow the core pipeline fixes above.
 
-### [ ] T7 — Evaluate formulas through a reusable expression evaluator
+### [x] T7 — Evaluate formulas through a reusable expression evaluator
 
 **Goal:** Move formula execution onto explicit IR-driven evaluation rather than scattered ad hoc logic.
 
@@ -137,7 +141,9 @@ These tasks increase expressiveness, but should only follow the core pipeline fi
 - execution uses that evaluator for at least the currently modeled formulas
 - tests cover basic arithmetic and variable lookup cases
 
-### [ ] T8 — Make conditional obligations real
+**Outcome:** Added reusable formula evaluation in `src/core/eval-expr.ts`, wired executor formula paths through it in `src/core/executor.ts`, and added arithmetic/variable tests in `src/core/eval-expr.test.ts`.
+
+### [x] T8 — Make conditional obligations real
 
 **Goal:** Support `condition` on obligations so conditional logic in the IR is not decorative.
 
@@ -149,6 +155,8 @@ These tasks increase expressiveness, but should only follow the core pipeline fi
 - at least one obligation or default path uses a condition
 - execution behavior changes correctly when the condition is true vs false
 
+**Outcome:** Added BoolExpr evaluation in `src/core/eval-bool.ts`, enforced obligation conditions in `src/core/executor.ts`, introduced a conditional lease obligation in `src/pipeline/extract-ir.ts`, and validated true/false behavior with `src/core/condition-exec.test.ts`.
+
 **Priority note:** This matters, but it is less urgent than fixing extraction honesty, scenario generation, and determinism.
 
 ---
@@ -157,7 +165,7 @@ These tasks increase expressiveness, but should only follow the core pipeline fi
 
 These tasks make the repo safer to change and easier for judges to trust.
 
-### [ ] T9 — Add a real test runner and focused unit/integration tests
+### [x] T9 — Add a real test runner and focused unit/integration tests
 
 **Goal:** Protect the core pipeline with small, high-signal tests.
 
@@ -178,7 +186,9 @@ These tasks make the repo safer to change and easier for judges to trust.
 - deterministic English generation
 - determinism command behavior
 
-### [ ] T10 — Tighten the README into a judge-proof base demo
+**Outcome:** Added standard `pnpm test` coverage via Node test mode in `package.json` with focused unit/integration checks in `tests/pipeline.test.ts`, including run-artifact and determinism command assertions.
+
+### [x] T10 — Tighten the README into a judge-proof base demo
 
 **Goal:** Make the repo runnable and verifiable in fewer than 10 clear steps.
 
@@ -191,6 +201,8 @@ These tasks make the repo safer to change and easier for judges to trust.
 - it explains how to inspect scenario inputs and execution outputs
 - it explains how to verify deterministic English
 - it states limits clearly so the demo does not overclaim
+
+**Outcome:** Updated `README.md` to a 9-step judge-demo flow with explicit commands/artifact paths, deterministic checks, Node version guidance, limits, and writeup links.
 
 ---
 
