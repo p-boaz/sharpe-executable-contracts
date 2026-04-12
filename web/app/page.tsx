@@ -32,7 +32,9 @@ async function listContracts(): Promise<ContractMeta[]> {
     if (!e.isDirectory()) continue;
     if (e.name.startsWith("_")) continue;
     const meta = await readJson<ContractMeta>(path.join(OUT_DIR, e.name, "meta.json"));
-    if (meta && Array.isArray(meta.scenarios)) metas.push(meta);
+    if (meta && Array.isArray(meta.scenarios)) {
+      metas.push({ ...meta, contractId: e.name });
+    }
   }
   return metas.sort((a, b) => a.contractId.localeCompare(b.contractId));
 }
@@ -46,6 +48,7 @@ async function loadContract(contractId: string, archetype: string | null) {
     readJson<ContractMeta>(path.join(base, "meta.json")),
   ]);
 
+  if (meta) meta.contractId = contractId;
   const archetypes = (meta?.scenarios ?? []).map((s) => s.archetype);
   const selectedArchetype =
     archetype && archetypes.includes(archetype) ? archetype : archetypes[0] ?? null;

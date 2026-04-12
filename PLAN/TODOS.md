@@ -165,6 +165,184 @@ These tasks support the hackathon's generality requirement once P0 is in place.
 
 **Outcome:** Generated `out/lease-run/` via `pnpm run run --contract Galleria… --no-llm` (2 modeled + 1 unmodeled clauses, 1 breach, ending balance $30,144.22). Loaded in the dossier at `localhost:3000/?run=lease-run` — top bar, parties, inputs row, scenario card, execution ribbon, ledger, obligations/breaches, and IR drawer all render without runtime errors. Clause kinds `obligation` / `formula` / `default` all display correctly; the one unmodeled clause renders as a normal card. Browser console is clean apart from a favicon 404.
 
+### [x] T17a — Archetype layer + post-condition validators
+
+**Goal:** Introduce named archetypes (on-time / late / over-limit / partial / baseline) as a first-class concept in scenario generation, with post-condition validators that assert a generated scenario actually exercises its declared intent.
+
+**Why this matters:** This is the semantic core of the old T17 — and the prerequisite for T18's research loop. Without archetype validators, "archetype pass rate" is not a meaningful metric: a scenario labeled `late-payment` that never actually pays late is indistinguishable from a scenario that does. Validators make the LLM scenario step independently verifiable instead of opaque.
+
+**Shape of the change:**
+
+- **Archetype layer** (`src/pipeline/archetypes.ts`, new):
+  - `archetypesFor(family) -> Archetype[]` returning `{ id, label, intent }` tuples.
+  - Credit card: `on-time`, `late-payment`, `over-limit`. Lease: `on-time`, `partial-payment`. Generic: `baseline`.
+  - Reuses `contractFamily(ir)` already in `src/pipeline/generate-scenario.ts`.
+
+- **Generator signature change:** `generateScenario({ ir, archetype, useLlm })`; add `generateAllScenarios({ ir, useLlm })` that loops archetypes. The LLM system prompt appends `"Generate a scenario that exercises ${archetype.intent}"`. The existing family-keyed fallback fixtures split into `(family, archetype)` pairs.
+
+- **Archetype validation** (`src/pipeline/archetype-check.ts`, new):
+  - `validateArchetype(scenario, archetype, execution) -> { pass: boolean, reason: string }`.
+  - Per-archetype post-conditions — see below for the initial set; these need explicit human sign-off before implementation because they define what "exercising the path" means.
+  - On failure under `--use-llm`, fall back to the deterministic fixture for that archetype and log the fallback reason.
+
+- **Scenario JSON additions:** `archetype: "late-payment"` (join key) and `label: "Late payment, below minimum"` (UI display).
+
+**Initial post-condition proposals** (human to confirm/adjust before implementation):
+
+- `credit-card / on-time`: every payment event is dated ≤ due date, and no `late-fee` appears in execution ledger.
+- `credit-card / late-payment`: at least one payment event is dated > due date, and execution ledger contains a `late-fee` entry.
+- `credit-card / over-limit`: at some point during execution, `balance > creditLimit`, and ledger contains an `over-limit-fee` entry.
+- `lease / on-time`: every rent payment is dated ≤ due date and full amount.
+- `lease / partial-payment`: at least one rent payment is < full amount, and execution shows unpaid balance carried forward.
+- `generic / baseline`: execution produces at least one ledger entry and the run does not crash.
+
+**Scope guard:**
+
+- No storage layout changes — keep `out/<run>/` as today. That's T17b.
+- No web UI changes — T17b.
+- Archetype set stays deterministic per family; unknown-family contracts default to `[baseline]`.
+
+**Done when:**
+
+- `src/pipeline/archetypes.ts` and `src/pipeline/archetype-check.ts` exist and are covered by focused tests in `tests/archetypes.test.ts`.
+- `generateAllScenarios({ir, useLlm})` produces one scenario per archetype with the correct `archetype` field.
+- LLM-mode validation runs after generation, logs failures, and falls back to the deterministic fixture for failing archetypes.
+- Validators are deterministic and do not call an LLM.
+- `pnpm demo` and `pnpm test` are green. Both bundled samples (credit-card + lease) produce ≥ 2 archetype-labeled scenarios each.
+
+**Outcome:** Added `src/pipeline/archetypes.ts` with `archetypesFor(family)` + `contractFamily(ir)`. Split `generate-scenario.ts` into archetype-keyed fallbacks (credit-card: on-time / late-payment / over-limit; lease: on-time / partial-payment; generic: baseline) and added inline `validateArchetype` post-condition checks; LLM failures fall back to the deterministic fixture with mode=`llm_validated_fallback` and a recorded `validationNote`. Exported `generateAllScenarios`. Updated `Scenario` type with `archetype` + `label`. Tests updated in `tests/pipeline.test.ts`; all 8 green.
+
+### [x] T17b — Contract-first storage layout + UI rework
+
+**Goal:** Restructure `out/` around the contract (not the run) and rework `web/` so the UI tells the story as `contract → IR+English → pick a scenario → execute`. Depends on T17a.
+
+**Why this matters:** Once multiple scenarios exist per contract (T17a), the current `out/<run>/` layout forces the UI to treat every scenario as a peer even when several share the same contract. A contract-keyed layout surfaces the IR-vs-scenario split directly.
+
+**Shape of the change:**
+
+- **Storage layout** — one folder per contract:
+  ```
+  out/<contractId>/
+    contract.md
+    ir.json
+    english.txt
+    meta.json               # { contractId, title, irHash, scenarioIds[], generatedAt }
+    scenarios/<archetype>.json
+    executions/<archetype>.json
+  ```
+  Join key between `scenarios/` and `executions/` is the archetype slug (filename). Check-artifacts like `_llm_sweep/` and `determinism/` move to `out/_checks/` so they do not pollute the contract dropdown.
+
+- **CLI changes (`src/main.ts`):** `--contract <id>` selects a contract; absent `--scenario` generates all archetypes. Per-contract regeneration is gated by `meta.json.irHash` so unchanged contracts skip IR+English rebuild but still refresh scenarios/executions on demand.
+
+- **Web UI (`web/app/`):** three vertical zones replacing the current scenario strip:
+  1. Contract dropdown (reads `out/*/meta.json`).
+  2. IR + deterministic English panel (unchanged by scenario).
+  3. Scenario list filtered to the selected contract, each with an "Execute" affordance that surfaces the matching `executions/<archetype>.json`.
+  Keeps the existing clause↔ledger↔english hover link; drops the cross-contract scenario-strip model.
+
+**Scope guard:**
+
+- No new LLM calls on the `IR → English` path.
+- No in-browser pipeline execution; UI remains read-only over CLI artifacts.
+- Migration of existing `out/run/`, `out/lease-run/` is a one-shot rename or clean `pnpm demo` — do not dual-write.
+
+**Done when:**
+
+- `out/<contractId>/{ir.json, english.txt, meta.json, scenarios/*.json, executions/*.json}` is the canonical layout for both bundled samples.
+- Web UI is contract-first: dropdown → IR+English → scenario list scoped to that contract → execute.
+- `pnpm demo` and `pnpm test` are green; `determinism` still passes (English stable per contract; scenarios allowed unstable under `--use-llm`, per T13).
+- README's 9-step base demo is updated to reflect the new artifact paths.
+
+**Explicit non-goals:** in-browser scenario editing, counterfactual comparison across archetypes, scenario diffing, new contract families beyond credit card / lease / generic.
+
+**Outcome:** `src/main.ts` now writes `out/<contractId>/{contract.md, ir.json, english.txt, meta.json, scenarios/<archetype>.json, executions/<archetype>.json}`; determinism runs land under `out/_checks/determinism/<contractId>/`. `run-pipeline.ts` returns `runs: ScenarioRun[]` across all archetypes plus shared `ir`/`english`/`family`. Web UI rewritten to contract-first in `web/app/page.tsx` and `web/app/Dossier.tsx`: header dropdown picks contract, Step 1 shows contract.md + english.txt side-by-side with IR drawer, Step 2 shows scenario cards filtered to the selected contract (with ending balance + breach badge), Step 3 reveals a Run button that unveils the ledger / obligations / breaches for the selected `executions/<archetype>.json`. Verified end-to-end in Chrome at `localhost:3001` for both bundled samples; `pnpm test` green (8/8), `pnpm build` green in `web/`.
+
+### [x] T17c — Tighten archetype validators to AND-form (event + ledger consequence)
+
+**Goal:** Upgrade `validateArchetype` so each post-condition checks both the event shape in the scenario AND the expected consequence in the execution ledger. Stricter baseline check. Prerequisite for T18's metric to be honest.
+
+**Why this matters:** The T17a validators (`src/pipeline/generate-scenario.ts:302-367`) only check event shape — a scenario labeled `late-payment` passes if it contains a late payment event, regardless of whether the executor actually assessed a `late-fee`. That means the extractor can silently drop the late-fee clause and the metric won't notice. If T18's research loop optimizes against this shape-only metric, an agent can "win" by generating scenarios that hit the right event shape while the extractor regresses on fee modeling.
+
+**Shape of the change:**
+
+- **Signature change**: `validateArchetype(scenario, archetype) -> string | null` becomes `validateArchetype(scenario, archetype, execution) -> string | null`.
+- **AND-form post-conditions** (per human confirmation):
+  - `credit-card / on-time`: every payment event dated ≤ due date, AND no `late-fee` entry in execution ledger.
+  - `credit-card / late-payment`: ≥1 payment dated > due date, AND execution ledger contains a `late-fee` entry.
+  - `credit-card / over-limit`: purchases > creditLimit, AND execution ledger contains an `over-limit-fee` entry.
+  - `lease / on-time`: every rent payment dated ≤ due date, AND full monthlyRent paid each period.
+  - `lease / partial-payment`: ≥1 rent payment < full amount, AND execution shows unpaid balance carried forward (e.g. non-zero `outstandingRent` in ending state or breach flag raised).
+  - `generic / baseline`: ≥1 modeled clause fires in execution (`execution.obligationsFired` or equivalent contains at least one entry whose source IR clause has `modeled: true`). Crash-free is no longer sufficient.
+- **Call-site update**: the LLM fallback path in `generate-scenario.ts` currently validates against `scenario` alone before executor runs; it must now run the executor on the candidate scenario before validating. Fallback to deterministic fixture on failure as today.
+- **Executor coupling**: if this creates an awkward cycle (generator → executor → validator), keep the cycle contained to the generator module rather than leaking execution state upward.
+
+**Scope guard:**
+
+- No changes to IR shape, archetype set, storage layout, or web UI.
+- Validators stay deterministic, no LLM calls.
+- Do not weaken the event-shape checks — the AND-form is strictly stricter than what shipped.
+
+**Done when:**
+
+- `validateArchetype` signature and all six archetype post-conditions match the AND-form spec above.
+- `generate-scenario.ts` LLM path runs executor on candidate before validating, with fallback preserved.
+- `tests/pipeline.test.ts` (or a dedicated `tests/archetypes.test.ts`) has per-archetype tests that prove a shape-only pass now fails without the ledger consequence.
+- `pnpm demo` still produces green bundled samples (both credit-card + lease archetypes must pass the new stricter checks on the shipped deterministic fixtures — if they don't, that's a real extractor bug to fix here).
+- `pnpm test` green.
+
+**Outcome:** Extracted `validateArchetype` to new `src/pipeline/archetype-check.ts` with signature `(scenario, archetype, execution, ir)`. AND-form checks match the spec: late/on-time/over-limit now require fee-clause presence in IR AND a matching ledger entry (keyed by `clauseId`, not description regex); lease on-time adds rent-obligation `status=met`; partial-payment adds `endingBalance > 0`; baseline requires ≥1 ledger entry whose `clauseId` maps to a modeled clause. Restructured `generate-scenario.ts` around a single `checkScenario()` gate that executes + validates both LLM and fallback candidates; if both fail, the scenario is tagged `llm_validated_fallback` with both failure reasons in `validationNote` (honest over silent). Added `tests/archetype-check.test.ts` with positive tests (heuristic fallbacks pass on credit-card + lease) and negative tests (shape-only passes rejected without ledger consequence). 13/13 tests green. Heuristic `pnpm run run --no-llm` is clean on both samples. LLM demo correctly surfaces a real extractor bug — the current LLM IR mis-classifies every fee as `feeType: late_payment`, so the over-limit archetype's `validationNote` now honestly reads "IR does not model an over_limit fee clause." That mis-classification is a distinct extractor issue for T18's research loop to target, not a regression here.
+
+### [ ] T18 — Autoresearch-style research loop for the extractor
+
+**Goal:** Stand up a bounded, scoreable loop that lets an agent iterate on the IR extractor overnight against a held-out corpus, keeping or reverting changes based on a single metric: archetype pass rate. Modeled on [karpathy/autoresearch](https://github.com/karpathy/autoresearch). Depends on T17a **and T17c**.
+
+**Why this matters:** The extractor is the single biggest source of heuristic fragility in the pipeline. Today we improve it by hand-editing `src/pipeline/extract-ir.ts` and eyeballing artifacts. A bounded research loop with one editable surface, one frozen harness, and one scalar metric turns that into ~100 experiments per overnight run, each directly comparable.
+
+**Shape of the change:**
+
+- **Layout:**
+  ```
+  research/
+    corpus/
+      seen/           # agent may inspect (westex.md, galleria.md)
+      heldout/        # agent runs against, does not read directly
+    harness/
+      run-all.ts      # runs pipeline over corpus, bounded wall time
+      score.ts        # frozen: aggregate archetype pass rate + per-contract breakdown
+    experiments/
+      <timestamp>/
+        diff.patch
+        scores.json
+        notes.md
+        baseline.sha
+    RESEARCH.md       # the "program.md" — how the agent should iterate
+  ```
+
+- **Editable surface (agent writes these):** `src/pipeline/extract-ir.ts`, `src/llm/openai-json.ts` prompt.
+
+- **Frozen surface (agent must not modify):** everything under `src/core/`, `src/pipeline/archetypes.ts`, `src/pipeline/archetype-check.ts`, `research/harness/`, `research/corpus/`.
+
+- **Metric:** `score = aggregate archetype pass rate` across `corpus/`, with per-contract + per-archetype breakdown in `scores.json`. Single number the agent optimizes. Pulls directly from `validateArchetype` in T17a.
+
+- **Loop:** human kicks off a session pointing at `RESEARCH.md`; agent proposes a diff, runs `research/harness/run-all.ts`, writes `experiments/<timestamp>/`, keeps change if `score` strictly improved or reverts via `git checkout`.
+
+**Scope guard:**
+
+- Research loop does not call an LLM on the `IR → English` path.
+- Corpus splits matter: `heldout/*.md` contents are never read by the agent; the agent sees only `scores.json` aggregates for those contracts.
+- No CI integration; this is a local overnight tool, not a gate.
+
+**Done when:**
+
+- `research/harness/run-all.ts` runs the full pipeline over `research/corpus/` with a bounded wall-clock budget and writes a single `scores.json`.
+- `research/harness/score.ts` is the single source of truth for the metric, is deterministic, and is documented as frozen during an experiment.
+- `RESEARCH.md` is written and tells an agent exactly: the editable surface, the frozen surface, how to run the harness, how to log an experiment, when to keep vs. revert.
+- `research/corpus/` contains ≥ 4 contracts across ≥ 2 families (credit-card + lease), with a `seen/`/`heldout/` split.
+- At least one example experiment is committed under `research/experiments/` as a reference.
+- README has a short "Research loop (optional)" section pointing at `RESEARCH.md`.
+
+**Explicit non-goals:** distributed experiments, cost tracking, model-provider sweeps, auto-PR creation, CI gating.
+
 ### [ ] T19 — Broaden unmodeled-clause capture for credit-card + lease runs
 
 **Goal:** Surface more of each contract's real section structure as `modeled: false` clauses, so the judge-facing output honestly shows the scope boundary on the two canonical contracts (not just on unsupported families).
