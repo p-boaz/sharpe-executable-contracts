@@ -1,7 +1,9 @@
+import { evaluateExpr } from "./eval-expr.js";
+import { evaluateBoolExpr } from "./eval-bool.js";
 import { daysBetween } from "../util/date.js";
 import { max, round2 } from "../util/math.js";
 import type { ExecutionResult, Breach, LedgerEntry } from "../types/execution.js";
-import type { ContractIR } from "../types/ir.js";
+import type { BoolExpr, ContractIR } from "../types/ir.js";
 import type { Scenario } from "../types/scenario.js";
 
 interface MutableObligation {
@@ -11,6 +13,24 @@ interface MutableObligation {
   amountDue: number;
   amountPaid: number;
   status: "open" | "met" | "missed" | "partial";
+}
+
+function numberState(
+  state: Scenario["initialState"],
+  key: string,
+  fallback: number,
+): number {
+  const value = state[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function stringState(
+  state: Scenario["initialState"],
+  key: string,
+  fallback: string,
+): string {
+  const value = state[key];
+  return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
 function findFeeAmount(ir: ContractIR, feeType: "late_payment" | "over_limit"): number {
@@ -29,6 +49,229 @@ function findClauseId(
   matcher: (clause: ContractIR["clauses"][number]) => boolean,
 ): string | undefined {
   return ir.clauses.find(matcher)?.id;
+}
+
+function findPaymentDefaultClauseId(ir: ContractIR): string | undefined {
+  return findClauseId(
+    ir,
+    (clause) =>
+      clause.kind === "default" &&
+      clause.modeled &&
+      /payment|nonpayment|late/i.test(
+        `${clause.triggerDescription} ${clause.consequences.join(" ")}`,
+      ),
+  );
+}
+
+function evaluateFormulaOutput(
+  ir: ContractIR,
+  outputVar: string,
+  vars: Record<string, number>,
+): number | undefined {
+  const formula = ir.clauses.find(
+    (
+      clause,
+    ): clause is Extract<ContractIR["clauses"][number], { kind: "formula" }> =>
+      clause.kind === "formula" && clause.modeled && clause.outputVar === outputVar,
+  );
+  if (!formula) return undefined;
+
+  const value = evaluateExpr(formula.expr, vars);
+  if (!Number.isFinite(value)) return undefined;
+  return value;
+}
+
+function conditionIsMet(condition: BoolExpr | undefined, scenario: Scenario): boolean {
+  if (!condition) return true;
+  return evaluateBoolExpr(condition, scenario.initialState);
+}
+
+function isLeaseScenario(ir: ContractIR, scenario: Scenario): boolean {
+  const family = scenario.initialState.contractFamily;
+  if (family === "lease") return true;
+
+  return ir.clauses.some(
+    (clause) =>
+      clause.kind === "obligation" &&
+      clause.modeled &&
+      clause.id === "clause.obligation.monthly_rent",
+  );
+}
+
+function monthlyRentFromIr(ir: ContractIR): number {
+  const value = evaluateFormulaOutput(ir, "monthly_rent_due", {});
+  if (typeof value !== "number") return 0;
+  return value;
+}
+
+function executeLeaseContract(
+  ir: ContractIR,
+  scenario: Scenario,
+  events: Scenario["events"],
+): ExecutionResult {
+  const ledger: LedgerEntry[] = [];
+  const breaches: Breach[] = [];
+  const obligations: MutableObligation[] = [];
+
+  const monthlyRent = round2(
+    numberState(scenario.initialState, "monthlyRent", monthlyRentFromIr(ir)),
+  );
+  const lateFee = findFeeAmount(ir, "late_payment");
+  const lateFeeClauseId = findClauseId(
+    ir,
+    (clause) => clause.kind === "fee" && clause.feeType === "late_payment",
+  );
+  const rentObligationClause = ir.clauses.find(
+    (
+      clause,
+    ): clause is Extract<ContractIR["clauses"][number], { kind: "obligation" }> =>
+      clause.kind === "obligation" &&
+      clause.modeled &&
+      clause.id === "clause.obligation.monthly_rent",
+  );
+  const rentClauseId =
+    rentObligationClause?.id ||
+    findClauseId(
+      ir,
+      (clause) =>
+        clause.kind === "obligation" &&
+        clause.modeled &&
+        clause.id === "clause.obligation.monthly_rent",
+    ) || "clause.obligation.monthly_rent";
+  const rentDueDate = stringState(
+    scenario.initialState,
+    "rentDueDate",
+    events.find((event) => event.type === "due_check")?.date || "2026-02-01",
+  );
+  const rentConditionMet = conditionIsMet(rentObligationClause?.condition, scenario);
+
+  let balance = 0;
+  let totalPaid = 0;
+  let totalFeesCharged = 0;
+  let rentObligation: MutableObligation | null = null;
+
+  if (rentConditionMet && monthlyRent > 0) {
+    balance = monthlyRent;
+    rentObligation = {
+      id: "obl-lease-rent-001",
+      clauseId: rentClauseId,
+      dueDate: rentDueDate,
+      amountDue: monthlyRent,
+      amountPaid: 0,
+      status: "open",
+    };
+    obligations.push(rentObligation);
+
+    ledger.push(
+      asLedger(
+        "stmt-lease-rent-001",
+        rentDueDate,
+        "statement",
+        monthlyRent,
+        balance,
+        `Lease rent due: $${monthlyRent.toFixed(2)}`,
+        rentClauseId,
+      ),
+    );
+  } else {
+    ledger.push(
+      asLedger(
+        "stmt-lease-rent-001",
+        rentDueDate,
+        "notice",
+        0,
+        balance,
+        "Lease rent obligation condition evaluated false; no rent due in this cycle",
+        rentClauseId,
+      ),
+    );
+  }
+
+  for (const event of events) {
+    switch (event.type) {
+      case "payment": {
+        const amount = round2(event.amount || 0);
+        balance = round2(Math.max(0, balance - amount));
+        totalPaid = round2(totalPaid + amount);
+
+        if (rentObligation && rentObligation.status === "open") {
+          rentObligation.amountPaid = round2(rentObligation.amountPaid + amount);
+        }
+
+        ledger.push(
+          asLedger(event.id, event.date, "payment", -amount, balance, "Lease payment posted"),
+        );
+        break;
+      }
+      case "due_check": {
+        if (!rentObligation || rentObligation.status !== "open") break;
+
+        if (rentObligation.amountPaid >= rentObligation.amountDue) {
+          rentObligation.status = "met";
+        } else if (rentObligation.amountPaid > 0) {
+          rentObligation.status = "partial";
+        } else {
+          rentObligation.status = "missed";
+        }
+
+        if (rentObligation.status !== "met") {
+          if (lateFee > 0) {
+            balance = round2(balance + lateFee);
+            totalFeesCharged = round2(totalFeesCharged + lateFee);
+            ledger.push(
+              asLedger(
+                `fee-late-${event.id}`,
+                event.date,
+                "fee",
+                lateFee,
+                balance,
+                "Late fee applied for unpaid lease rent",
+                lateFeeClauseId,
+              ),
+            );
+          }
+
+          pushBreach(
+            breaches,
+            `breach-rent-late-${event.id}`,
+            event.date,
+            "late_payment",
+            "Monthly rent was not fully paid by due-check date",
+            rentClauseId,
+          );
+        }
+        break;
+      }
+      case "notice": {
+        ledger.push(
+          asLedger(event.id, event.date, "notice", 0, balance, "Lease notice event recorded"),
+        );
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  return {
+    ledger,
+    breaches,
+    obligations: obligations.map((obligation) => ({
+      id: obligation.id,
+      clauseId: obligation.clauseId,
+      dueDate: obligation.dueDate,
+      amountDue: round2(obligation.amountDue),
+      amountPaid: round2(obligation.amountPaid),
+      status: obligation.status === "open" ? "partial" : obligation.status,
+    })),
+    summary: {
+      endingBalance: round2(balance),
+      totalInterestCharged: 0,
+      totalFeesCharged: round2(totalFeesCharged),
+      totalPaid: round2(totalPaid),
+      breached: breaches.length > 0,
+    },
+  };
 }
 
 function minimumPayment(balance: number): number {
@@ -82,14 +325,26 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
     return a.id.localeCompare(b.id);
   });
 
+  if (isLeaseScenario(ir, scenario)) {
+    return executeLeaseContract(ir, scenario, events);
+  }
+
   const ledger: LedgerEntry[] = [];
   const breaches: Breach[] = [];
   const obligations: MutableObligation[] = [];
 
-  const apr = scenario.initialState.apr;
+  const aprFormulaValue = evaluateFormulaOutput(ir, "apr_nominal", {});
+  const apr = numberState(
+    scenario.initialState,
+    "apr",
+    typeof aprFormulaValue === "number" ? aprFormulaValue : 7.9,
+  );
   const dailyRate = apr / 100 / 365;
   const lateFee = findFeeAmount(ir, "late_payment");
   const overLimitFee = findFeeAmount(ir, "over_limit");
+  const creditLimit = numberState(scenario.initialState, "creditLimit", 0);
+  const statementDate = stringState(scenario.initialState, "statementDate", "2026-01-31");
+  const dueDate = stringState(scenario.initialState, "dueDate", "2026-02-25");
   const minimumPaymentClauseId = findClauseId(
     ir,
     (c) => c.kind === "obligation" && c.id === "clause.obligation.minimum_payment",
@@ -102,13 +357,13 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
     ir,
     (c) => c.kind === "fee" && c.feeType === "over_limit",
   );
-  const defaultClauseId = findClauseId(ir, (c) => c.kind === "default");
+  const paymentDefaultClauseId = findPaymentDefaultClauseId(ir);
 
-  let balance = round2(scenario.initialState.balance);
+  let balance = round2(numberState(scenario.initialState, "balance", 0));
   let totalInterestCharged = 0;
   let totalFeesCharged = 0;
   let totalPaid = 0;
-  let lastAccrualDate = events[0]?.date || scenario.initialState.statementDate;
+  let lastAccrualDate = events[0]?.date || statementDate;
   let activeObligation: MutableObligation | null = null;
 
   for (const event of events) {
@@ -170,11 +425,18 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
         break;
       }
       case "statement_close": {
-        const amountDue = minimumPayment(balance);
+        const evaluatedMinimumPayment = evaluateFormulaOutput(ir, "minimum_payment_due", {
+          new_balance: balance,
+        });
+        const amountDue = round2(
+          typeof evaluatedMinimumPayment === "number" && evaluatedMinimumPayment > 0
+            ? evaluatedMinimumPayment
+            : minimumPayment(balance),
+        );
         activeObligation = {
           id: `obl-${event.id}`,
           clauseId: minimumPaymentClauseId || "clause.obligation.minimum_payment",
-          dueDate: scenario.initialState.dueDate,
+          dueDate,
           amountDue,
           amountPaid: 0,
           status: "open",
@@ -193,7 +455,7 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
           ),
         );
 
-        if (balance > scenario.initialState.creditLimit && overLimitFee > 0) {
+        if (creditLimit > 0 && balance > creditLimit && overLimitFee > 0) {
           balance = round2(balance + overLimitFee);
           totalFeesCharged = round2(totalFeesCharged + overLimitFee);
           ledger.push(
@@ -254,14 +516,16 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
             "Minimum payment was not fully paid by due-check date",
             minimumPaymentClauseId,
           );
-          pushBreach(
-            breaches,
-            `breach-default-${event.id}`,
-            event.date,
-            "default",
-            "Default condition triggered by late payment",
-            defaultClauseId,
-          );
+          if (paymentDefaultClauseId) {
+            pushBreach(
+              breaches,
+              `breach-default-${event.id}`,
+              event.date,
+              "default",
+              "Default condition triggered by late payment",
+              paymentDefaultClauseId,
+            );
+          }
         }
 
         break;

@@ -17,12 +17,6 @@ export interface ScenarioEvent {
 export interface Scenario {
   scenarioId: string;
   assumptions: string[];
-  initialState: {
-    balance: number;
-    creditLimit: number;
-    apr: number;
-    statementDate: string;
-    dueDate: string;
-  };
+  initialState: Record<string, string | number | boolean>;
   events: ScenarioEvent[];
 }

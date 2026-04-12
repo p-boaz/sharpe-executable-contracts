@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-import { decompileIrToEnglish } from "./core/decompiler.js";
 import { ensureDir, writeJson, writeText } from "./io/fs.js";
 import { runPipeline } from "./pipeline/run-pipeline.js";
 import { stableStringify } from "./util/json.js";
@@ -107,26 +106,47 @@ async function runDeterminismCommand(options: CliOptions): Promise<void> {
   const outDir = resolve(process.cwd(), options.outDir);
   await ensureDir(outDir);
 
-  const result = await runPipeline({
+  const resultA = await runPipeline({
+    contractPath,
+    useLlm: options.useLlm,
+  });
+  const resultB = await runPipeline({
     contractPath,
     useLlm: options.useLlm,
   });
 
-  const englishA = decompileIrToEnglish(result.ir);
-  const englishB = decompileIrToEnglish(result.ir);
-  const executionA = stableStringify(result.execution);
-  const executionB = stableStringify(result.execution);
+  const irA = stableStringify(resultA.ir);
+  const irB = stableStringify(resultB.ir);
+  const scenarioA = stableStringify(resultA.scenario);
+  const scenarioB = stableStringify(resultB.scenario);
+  const executionA = stableStringify(resultA.execution);
+  const executionB = stableStringify(resultB.execution);
+  const englishA = resultA.english;
+  const englishB = resultB.english;
 
+  const irStable = irA === irB;
+  const scenarioStable = scenarioA === scenarioB;
   const englishStable = englishA === englishB;
   const executionStable = executionA === executionB;
 
+  await writeText(resolve(outDir, "ir-a.json"), `${irA}\n`);
+  await writeText(resolve(outDir, "ir-b.json"), `${irB}\n`);
+  await writeText(resolve(outDir, "scenario-a.json"), `${scenarioA}\n`);
+  await writeText(resolve(outDir, "scenario-b.json"), `${scenarioB}\n`);
   await writeText(resolve(outDir, "english-a.txt"), englishA);
   await writeText(resolve(outDir, "english-b.txt"), englishB);
   await writeText(resolve(outDir, "execution-a.json"), `${executionA}\n`);
   await writeText(resolve(outDir, "execution-b.json"), `${executionB}\n`);
   await writeJson(resolve(outDir, "determinism.json"), {
+    comparedArtifacts: ["ir", "scenario", "execution", "english"],
+    irStable,
+    scenarioStable,
     englishStable,
     executionStable,
+    irHashA: hashText(irA),
+    irHashB: hashText(irB),
+    scenarioHashA: hashText(scenarioA),
+    scenarioHashB: hashText(scenarioB),
     englishHashA: hashText(englishA),
     englishHashB: hashText(englishB),
     executionHashA: hashText(executionA),
@@ -139,6 +159,8 @@ async function runDeterminismCommand(options: CliOptions): Promise<void> {
       `Contract: ${options.contractPath}`,
       `Output: ${options.outDir}`,
       `LLM mode: ${options.useLlm ? "on" : "off"}`,
+      `IR stable: ${irStable}`,
+      `Scenario stable: ${scenarioStable}`,
       `English stable: ${englishStable}`,
       `Execution stable: ${executionStable}`,
     ].join("\n"),

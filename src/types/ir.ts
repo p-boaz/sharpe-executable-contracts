@@ -33,11 +33,17 @@ export interface Expr {
   args?: Expr[];
 }
 
+export interface SourceSpan {
+  start: number;
+  end: number;
+}
+
 export interface ClauseBase {
   id: string;
   title: string;
   kind: ClauseKind;
   sourceText: string;
+  sourceSpan?: SourceSpan;
   modeled: boolean;
 }
 
@@ -82,7 +88,7 @@ export interface ContractIR {
   clauses: Clause[];
   metadata: {
     sourceFile: string;
-    extractedAt: string;
+    extractionHash: string;
     extractorVersion: string;
     clauseCount: number;
     modeledClauseCount: number;

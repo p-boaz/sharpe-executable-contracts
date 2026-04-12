@@ -11,13 +11,7 @@ export interface GenerateScenarioOptions {
 const ScenarioSchema = z.object({
   scenarioId: z.string().min(1),
   assumptions: z.array(z.string()),
-  initialState: z.object({
-    balance: z.number().finite(),
-    creditLimit: z.number().positive(),
-    apr: z.number().positive(),
-    statementDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  }),
+  initialState: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
   events: z.array(
     z.object({
       id: z.string().min(1),
@@ -47,14 +41,8 @@ const scenarioJsonSchema: Record<string, unknown> = {
     assumptions: { type: "array", items: { type: "string" } },
     initialState: {
       type: "object",
-      additionalProperties: false,
-      required: ["balance", "creditLimit", "apr", "statementDate", "dueDate"],
-      properties: {
-        balance: { type: "number" },
-        creditLimit: { type: "number" },
-        apr: { type: "number" },
-        statementDate: { type: "string" },
-        dueDate: { type: "string" },
+      additionalProperties: {
+        anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
       },
     },
     events: {
@@ -107,33 +95,188 @@ function aprFromIr(ir: ContractIR): number {
   return 7.9;
 }
 
+function hasModeledClause(
+  ir: ContractIR,
+  matcher: (clause: ContractIR["clauses"][number]) => boolean,
+): boolean {
+  return ir.clauses.some((clause) => clause.modeled && matcher(clause));
+}
+
+function monthlyRentFromIr(ir: ContractIR): number {
+  const rentFormula = ir.clauses.find(
+    (
+      clause,
+    ): clause is Extract<ContractIR["clauses"][number], { kind: "formula" }> =>
+      clause.kind === "formula" &&
+      clause.modeled &&
+      clause.outputVar === "monthly_rent_due" &&
+      clause.expr.op === "const" &&
+      typeof clause.expr.value === "number",
+  );
+  if (!rentFormula) return 0;
+  return rentFormula.expr.value || 0;
+}
+
+function contractFamily(ir: ContractIR): "credit_card" | "lease" | "generic" {
+  const title = `${ir.title} ${ir.contractId}`.toLowerCase();
+  const hasCreditSignals =
+    title.includes("credit") ||
+    title.includes("card") ||
+    hasModeledClause(
+      ir,
+      (clause) =>
+        clause.kind === "fee" &&
+        (clause.feeType === "late_payment" || clause.feeType === "over_limit"),
+    ) ||
+    hasModeledClause(
+      ir,
+      (clause) =>
+        clause.kind === "formula" && clause.outputVar === "minimum_payment_due",
+    );
+  const hasLeaseSignals =
+    title.includes("lease") ||
+    hasModeledClause(
+      ir,
+      (clause) =>
+        clause.kind === "obligation" && clause.id === "clause.obligation.monthly_rent",
+    ) ||
+    hasModeledClause(
+      ir,
+      (clause) => clause.kind === "formula" && clause.outputVar === "monthly_rent_due",
+    );
+
+  if (hasCreditSignals) return "credit_card";
+  if (hasLeaseSignals) return "lease";
+  return "generic";
+}
+
+function irContextAssumptions(ir: ContractIR): string[] {
+  return [
+    `Scenario generated for contract ${ir.contractId}`,
+    `Modeled coverage in IR: ${ir.metadata.modeledClauseCount}/${ir.metadata.clauseCount}`,
+  ];
+}
+
 function fallbackScenario(ir: ContractIR): Scenario {
+  const family = contractFamily(ir);
+  const contextAssumptions = irContextAssumptions(ir);
+  const hasMinimumPayment = hasModeledClause(
+    ir,
+    (clause) => clause.kind === "obligation" && clause.id === "clause.obligation.minimum_payment",
+  );
+  const hasOverLimitFee = hasModeledClause(
+    ir,
+    (clause) => clause.kind === "fee" && clause.feeType === "over_limit",
+  );
+  const hasLateFee = hasModeledClause(
+    ir,
+    (clause) => clause.kind === "fee" && clause.feeType === "late_payment",
+  );
+
+  if (family === "credit_card") {
+    const openingBalance = hasOverLimitFee ? 1080 : 300;
+    const creditLimit = hasOverLimitFee ? 1000 : 1500;
+    const paymentAmount = hasMinimumPayment && hasLateFee ? 20 : 180;
+
+    return {
+      scenarioId: "scenario.credit-card.ir-responsive",
+      assumptions: [
+        ...contextAssumptions,
+        "Single billing cycle modeled",
+        "Scenario chosen from extracted modeled clauses",
+        hasOverLimitFee
+          ? "Opening activity is set to exceed the credit limit at statement close"
+          : "Opening activity stays within the credit limit",
+        hasLateFee
+          ? "Payment is intentionally below the likely minimum due"
+          : "Payment is intended to satisfy the observed obligation path",
+      ],
+      initialState: {
+        contractFamily: "credit_card",
+        balance: 0,
+        creditLimit,
+        apr: aprFromIr(ir),
+        irClauseCount: ir.metadata.clauseCount,
+        irModeledClauseCount: ir.metadata.modeledClauseCount,
+        statementDate: "2026-01-31",
+        dueDate: "2026-02-25",
+      },
+      events: [
+        { id: "evt-001", date: "2026-01-05", type: "purchase", amount: openingBalance },
+        { id: "evt-002", date: "2026-01-31", type: "statement_close" },
+        { id: "evt-003", date: "2026-02-20", type: "payment", amount: paymentAmount },
+        { id: "evt-004", date: "2026-02-26", type: "due_check" },
+        {
+          id: "evt-005",
+          date: "2026-02-26",
+          type: "notice",
+          metadata: {
+            type: hasLateFee ? "late-payment-review" : "account-review",
+            family,
+          },
+        },
+      ],
+    };
+  }
+
+  if (family === "lease") {
+    const monthlyRent = monthlyRentFromIr(ir) || 75000;
+    const partialPayment = Number((monthlyRent * 0.6).toFixed(2));
+
+    return {
+      scenarioId: "scenario.lease.monthly-rent-due-check",
+      assumptions: [
+        ...contextAssumptions,
+        "Single lease rent cycle modeled",
+        "Rent invoice is represented as a notice event at cycle start",
+        "Payment is intentionally partial to exercise lease nonpayment behavior",
+      ],
+      initialState: {
+        contractFamily: "lease",
+        monthlyRent,
+        rentDueDate: "2026-02-01",
+        rent_cycle_active: 1,
+        irClauseCount: ir.metadata.clauseCount,
+        irModeledClauseCount: ir.metadata.modeledClauseCount,
+      },
+      events: [
+        {
+          id: "evt-001",
+          date: "2026-02-01",
+          type: "notice",
+          metadata: { type: "rent-invoice", family },
+        },
+        { id: "evt-002", date: "2026-02-05", type: "payment", amount: partialPayment },
+        { id: "evt-003", date: "2026-02-10", type: "due_check" },
+        {
+          id: "evt-004",
+          date: "2026-02-10",
+          type: "notice",
+          metadata: { type: "lease-default-review", family },
+        },
+      ],
+    };
+  }
+
   return {
-    scenarioId: "scenario.credit-card.late-payment",
+    scenarioId: "scenario.generic.notice-only",
     assumptions: [
-      "Single billing cycle modeled",
-      "No returned payment fee event",
-      "Credit line fixed for scenario",
+      ...contextAssumptions,
+      "Fallback generic scenario because no supported credit-card execution path was detected",
+      "Events are limited to notice records until more executor semantics are implemented",
     ],
     initialState: {
-      balance: 0,
-      creditLimit: 1000,
-      apr: aprFromIr(ir),
-      statementDate: "2026-01-31",
-      dueDate: "2026-02-25",
+      contractFamily: "generic",
+      irClauseCount: ir.metadata.clauseCount,
+      irModeledClauseCount: ir.metadata.modeledClauseCount,
+      referenceDate: "2026-01-31",
     },
     events: [
-      { id: "evt-001", date: "2026-01-03", type: "purchase", amount: 1200 },
-      { id: "evt-002", date: "2026-01-10", type: "cash_advance", amount: 200 },
-      { id: "evt-003", date: "2026-01-31", type: "statement_close" },
-      { id: "evt-004", date: "2026-02-12", type: "payment", amount: 100 },
-      { id: "evt-005", date: "2026-02-26", type: "due_check" },
-      { id: "evt-006", date: "2026-02-28", type: "payment", amount: 300 },
       {
-        id: "evt-007",
-        date: "2026-02-28",
+        id: "evt-001",
+        date: "2026-01-31",
         type: "notice",
-        metadata: { type: "customer_call" },
+        metadata: { type: "generic-contract-review", family },
       },
     ],
   };
@@ -177,7 +320,7 @@ export async function generateScenario(
   }
 
   const systemPrompt =
-    "Generate one concrete execution scenario for this contract IR. Return strict JSON only. Include realistic dates/events and amounts so execution can run.";
+    "Generate one concrete execution scenario for this contract IR. Return strict JSON only. The scenario must be human-inspectable, include explicit assumptions, keep initialState generic rather than contract-family-hardcoded where possible, and choose events that match the modeled clauses.";
 
   const userPrompt = `IR JSON:\n${JSON.stringify(options.ir)}`;
 

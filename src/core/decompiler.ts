@@ -1,4 +1,4 @@
-import type { Clause, ContractIR, Expr, TemporalRule } from "../types/ir.js";
+import type { BoolExpr, Clause, ContractIR, Expr, TemporalRule } from "../types/ir.js";
 
 function temporalToText(rule: TemporalRule): string {
   if (rule.type === "on_date") return `on ${String(rule.value)}`;
@@ -29,25 +29,53 @@ function exprToText(expr: Expr): string {
   }
 }
 
+function boolExprToText(expr: BoolExpr): string {
+  switch (expr.op) {
+    case "eq":
+      return `${String(expr.left)} == ${String(expr.right)}`;
+    case "neq":
+      return `${String(expr.left)} != ${String(expr.right)}`;
+    case "gt":
+      return `${String(expr.left)} > ${String(expr.right)}`;
+    case "gte":
+      return `${String(expr.left)} >= ${String(expr.right)}`;
+    case "lt":
+      return `${String(expr.left)} < ${String(expr.right)}`;
+    case "lte":
+      return `${String(expr.left)} <= ${String(expr.right)}`;
+    case "and":
+      return `(${(expr.args || []).map(boolExprToText).join(" AND ")})`;
+    case "or":
+      return `(${(expr.args || []).map(boolExprToText).join(" OR ")})`;
+    default:
+      return "condition";
+  }
+}
+
 function clauseToText(clause: Clause): string {
   const prefix = clause.modeled ? "" : "[UNMODELED] ";
+  const sourceTrace =
+    clause.sourceSpan != null
+      ? ` [source:${clause.sourceSpan.start}-${clause.sourceSpan.end}]`
+      : "";
   if (clause.kind === "obligation") {
-    return `${prefix}${clause.id}: ${clause.actor} must ${clause.action} ${temporalToText(clause.due)}.`;
+    const conditionText = clause.condition ? ` if ${boolExprToText(clause.condition)}` : "";
+    return `${prefix}${clause.id}: ${clause.actor} must ${clause.action} ${temporalToText(clause.due)}${conditionText}.${sourceTrace}`;
   }
   if (clause.kind === "formula") {
-    return `${prefix}${clause.id}: ${clause.outputVar} is computed as ${exprToText(clause.expr)}.`;
+    return `${prefix}${clause.id}: ${clause.outputVar} is computed as ${exprToText(clause.expr)}.${sourceTrace}`;
   }
   if (clause.kind === "fee") {
     const amount =
       clause.amountType === "fixed"
         ? `$${clause.amountValue.toFixed(2)}`
         : `${clause.amountValue}%`;
-    return `${prefix}${clause.id}: ${clause.feeType} fee is ${amount} when ${clause.triggerDescription}.`;
+    return `${prefix}${clause.id}: ${clause.feeType} fee is ${amount} when ${clause.triggerDescription}.${sourceTrace}`;
   }
 
   return `${prefix}${clause.id}: default is triggered when ${clause.triggerDescription}. Consequences: ${clause.consequences.join(
     "; ",
-  )}.`;
+  )}.${sourceTrace}`;
 }
 
 export function decompileIrToEnglish(ir: ContractIR): string {
