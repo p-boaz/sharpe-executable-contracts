@@ -22,7 +22,7 @@ export interface ObligationStatus {
   dueDate: string;
   amountDue: number;
   amountPaid: number;
-  status: "met" | "missed" | "partial";
+  status: "met" | "missed" | "partial" | "pending";
 }
 
 export interface ExecutionResult {

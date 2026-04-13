@@ -7,6 +7,8 @@ import type { ExecutionResult, Breach, LedgerEntry } from "../types/execution.js
 import type { BoolExpr, Clause, ContractIR, TemporalRule } from "../types/ir.js";
 import type { Scenario } from "../types/scenario.js";
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 type ClauseWithObligation = Clause & { effect: Extract<Clause["effect"], { kind: "obligation" }> };
 type ClauseWithFormula = Clause & { effect: Extract<Clause["effect"], { kind: "formula" }> };
 type ClauseWithPayment = Clause & { effect: Extract<Clause["effect"], { kind: "payment" }> };
@@ -445,8 +447,14 @@ function executeGenericObligations(
     );
   }
 
+  // Only promote "open" → "missed" when the due date is a concrete ISO
+  // date. Symbolic placeholders like "see_source_text" mean the extractor
+  // couldn't pin a deadline, so asserting a breach against them produces
+  // false-positive failures that swamp the UI (e.g. generic service
+  // agreements with 20+ clauses all flagged "missed by see_source_text").
   for (const tracker of obligations) {
     if (tracker.status !== "open") continue;
+    if (!ISO_DATE.test(tracker.dueDate)) continue;
     tracker.status = "missed";
     pushBreach(
       breaches,
@@ -467,7 +475,10 @@ function executeGenericObligations(
       dueDate: o.dueDate,
       amountDue: round2(o.amountDue),
       amountPaid: round2(o.amountPaid),
-      status: o.status === "open" ? "missed" : o.status,
+      // At this point any remaining "open" obligation has a non-ISO due
+      // date (e.g. "see_source_text"); surface it as "pending" rather than
+      // silently renaming to "missed", which would lie to the UI.
+      status: o.status === "open" ? "pending" : o.status,
     })),
     summary: {
       endingBalance: 0,
