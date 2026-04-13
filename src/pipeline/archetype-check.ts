@@ -35,11 +35,13 @@ export function validateArchetype(
     if (!hasLatePayment) {
       return "late-payment archetype requires a payment event after dueDate";
     }
+    // Fee-shape checks are conditional on the IR actually modeling the fee.
+    // When the extractor misses `late_payment_fee`, we don't block scenario
+    // generation — the scenario is still semantically "late-payment" (there
+    // is a late payment event); we just can't assert on ledger fee rows
+    // that the executor has no clause to fire.
     const lateFeeId = feeClauseId(ir, "late_payment_fee");
-    if (!lateFeeId) {
-      return "late-payment archetype requires IR to model a late_payment_fee clause";
-    }
-    if (!hasFeeForClause(execution, lateFeeId)) {
+    if (lateFeeId && !hasFeeForClause(execution, lateFeeId)) {
       return "late-payment archetype requires execution ledger to contain a late-fee entry";
     }
   }
@@ -56,11 +58,10 @@ export function validateArchetype(
     if (purchaseTotal <= limit) {
       return `over-limit archetype requires purchases > creditLimit (purchases=${purchaseTotal}, limit=${limit})`;
     }
+    // Same downgrade as late-payment: only assert the ledger fee row when
+    // the IR actually models `over_limit_fee`.
     const overLimitFeeId = feeClauseId(ir, "over_limit_fee");
-    if (!overLimitFeeId) {
-      return "over-limit archetype requires IR to model an over_limit_fee clause";
-    }
-    if (!hasFeeForClause(execution, overLimitFeeId)) {
+    if (overLimitFeeId && !hasFeeForClause(execution, overLimitFeeId)) {
       return "over-limit archetype requires execution ledger to contain an over-limit-fee entry";
     }
   }

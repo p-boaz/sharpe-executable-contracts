@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
-import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
+import {
+  ensureDir,
+  readTextFile,
+  writeJson,
+  writeText,
+} from "../../../../src/io/fs.js";
+import {
+  extractContract,
+  generateRuns,
+} from "../../../../src/pipeline/run-pipeline.js";
+import { buildMeta } from "../../../../src/pipeline/meta.js";
 
 const REPO_ROOT = path.resolve(process.cwd(), "..");
 const CONTRACTS_DIR = path.join(REPO_ROOT, "contracts");
 const UPLOADED_DIR = path.join(CONTRACTS_DIR, "_uploaded");
 const WEB_RUNS_DIR = path.join(REPO_ROOT, "out", "_web_runs");
-const execFileAsync = promisify(execFile);
 
 interface RunContractRequest {
   action?: string;
@@ -58,85 +66,87 @@ function isSafeSegment(value: string): boolean {
   return /^[a-z0-9._-]+$/i.test(value);
 }
 
-function parseJsonOutput<T>(stdout: string, fallbackError: string): T {
-  try {
-    return JSON.parse(stdout.trim()) as T;
-  } catch {
-    throw new Error(fallbackError);
-  }
+async function runGenerateIr(
+  contractPath: string,
+  outDir: string,
+  contractKey: string,
+): Promise<unknown> {
+  const { contractText, ir } = await extractContract({ contractPath });
+  const meta = buildMeta({
+    contractId: contractKey,
+    ir,
+    stageTimestamp: {
+      key: "irGeneratedAt",
+      value: new Date().toISOString(),
+    },
+  });
+  await ensureDir(outDir);
+  await writeText(path.resolve(outDir, "contract.md"), contractText);
+  await writeJson(path.resolve(outDir, "ir.json"), ir);
+  await writeJson(path.resolve(outDir, "meta.json"), meta);
+  return meta;
 }
 
-// Both stage scripts import the shared buildMeta + composable pipeline
-// functions from src/pipeline so the CLI and the web produce identical
-// meta.json shapes. Keep these as tsx --eval payloads (spawned against
-// the repo root as cwd) to avoid pulling the src/ TypeScript tree into
-// the Next.js bundler graph.
-const GENERATE_IR_SCRIPT = [
-  'import { resolve } from "node:path";',
-  'import { ensureDir, writeJson, writeText } from "./src/io/fs.ts";',
-  'import { extractContract } from "./src/pipeline/run-pipeline.ts";',
-  'import { buildMeta } from "./src/pipeline/meta.ts";',
-  "",
-  "(async () => {",
-  "  const [contractPath, outDir, _sourceFile, contractKey] = process.argv.slice(-4);",
-  "  const { contractText, ir } = await extractContract({ contractPath });",
-  "  const meta = buildMeta({",
-  "    contractId: contractKey,",
-  "    ir,",
-  "    stageTimestamp: { key: 'irGeneratedAt', value: new Date().toISOString() },",
-  "  });",
-  "  await ensureDir(outDir);",
-  "  await writeText(resolve(outDir, 'contract.md'), contractText);",
-  "  await writeJson(resolve(outDir, 'ir.json'), ir);",
-  "  await writeJson(resolve(outDir, 'meta.json'), meta);",
-  "  process.stdout.write(JSON.stringify({ meta }));",
-  "})();",
-].join("\n");
+async function runGenerateScenarios(
+  contractPath: string,
+  outDir: string,
+  contractKey: string,
+): Promise<unknown> {
+  const [contractText, irRaw] = await Promise.all([
+    readTextFile(contractPath),
+    readTextFile(path.resolve(outDir, "ir.json")),
+  ]);
+  const ir = JSON.parse(irRaw);
+  const { family, runs } = await generateRuns({ ir, contractText });
 
-const GENERATE_SCENARIOS_SCRIPT = [
-  'import { rm } from "node:fs/promises";',
-  'import { resolve } from "node:path";',
-  'import { ensureDir, readTextFile, writeJson } from "./src/io/fs.ts";',
-  'import { generateRuns } from "./src/pipeline/run-pipeline.ts";',
-  'import { buildMeta } from "./src/pipeline/meta.ts";',
-  "",
-  "(async () => {",
-  "  const [contractPath, outDir, _sourceFile, contractKey] = process.argv.slice(-4);",
-  "  const [contractText, irRaw] = await Promise.all([",
-  "    readTextFile(contractPath),",
-  "    readTextFile(resolve(outDir, 'ir.json')),",
-  "  ]);",
-  "  const ir = JSON.parse(irRaw);",
-  "  const { family, runs } = await generateRuns({ ir, contractText });",
-  "",
-  "  let existingMeta = {};",
-  "  try {",
-  "    existingMeta = JSON.parse(await readTextFile(resolve(outDir, 'meta.json')));",
-  "  } catch {}",
-  "",
-  "  await rm(resolve(outDir, 'scenarios'), { recursive: true, force: true });",
-  "  await rm(resolve(outDir, 'executions'), { recursive: true, force: true });",
-  "  await rm(resolve(outDir, 'english.txt'), { force: true });",
-  "  await ensureDir(resolve(outDir, 'scenarios'));",
-  "  await ensureDir(resolve(outDir, 'executions'));",
-  "",
-  "  for (const run of runs) {",
-  "    await writeJson(resolve(outDir, 'scenarios', `${run.archetype}.json`), run.scenario);",
-  "    await writeJson(resolve(outDir, 'executions', `${run.archetype}.json`), run.execution);",
-  "  }",
-  "",
-  "  const meta = buildMeta({",
-  "    contractId: contractKey,",
-  "    ir,",
-  "    family,",
-  "    runs,",
-  "    existingMeta,",
-  "    stageTimestamp: { key: 'scenariosGeneratedAt', value: new Date().toISOString() },",
-  "  });",
-  "  await writeJson(resolve(outDir, 'meta.json'), meta);",
-  "  process.stdout.write(JSON.stringify({ meta }));",
-  "})();",
-].join("\n");
+  let existingMeta: Record<string, unknown> = {};
+  try {
+    existingMeta = JSON.parse(
+      await readTextFile(path.resolve(outDir, "meta.json")),
+    );
+  } catch {
+    // first run has no prior meta; treat as empty
+  }
+
+  await fs.rm(path.resolve(outDir, "scenarios"), {
+    recursive: true,
+    force: true,
+  });
+  await fs.rm(path.resolve(outDir, "executions"), {
+    recursive: true,
+    force: true,
+  });
+  await fs.rm(path.resolve(outDir, "english.txt"), { force: true });
+  await ensureDir(path.resolve(outDir, "scenarios"));
+  await ensureDir(path.resolve(outDir, "executions"));
+
+  await Promise.all(
+    runs.flatMap((run) => [
+      writeJson(
+        path.resolve(outDir, "scenarios", `${run.archetype}.json`),
+        run.scenario,
+      ),
+      writeJson(
+        path.resolve(outDir, "executions", `${run.archetype}.json`),
+        run.execution,
+      ),
+    ]),
+  );
+
+  const meta = buildMeta({
+    contractId: contractKey,
+    ir,
+    family,
+    runs,
+    existingMeta,
+    stageTimestamp: {
+      key: "scenariosGeneratedAt",
+      value: new Date().toISOString(),
+    },
+  });
+  await writeJson(path.resolve(outDir, "meta.json"), meta);
+  return meta;
+}
 
 export const runtime = "nodejs";
 
@@ -179,32 +189,13 @@ export async function POST(request: Request) {
 
     if (action === "generate-ir") {
       await fs.rm(outDir, { recursive: true, force: true });
-
-      const { stdout } = await execFileAsync(
-        "pnpm",
-        [
-          "exec",
-          "tsx",
-          "--eval",
-          GENERATE_IR_SCRIPT,
-          contractPath,
-          outDir,
-          sourceFile,
-          contractKey,
-        ],
-        { cwd: REPO_ROOT, maxBuffer: 20 * 1024 * 1024 },
-      );
-
-      const payload = parseJsonOutput<{ meta: unknown }>(
-        stdout,
-        "IR generation completed but response could not be parsed",
-      );
+      const meta = await runGenerateIr(contractPath, outDir, contractKey);
       return NextResponse.json({
         ok: true,
         action,
         contractKey,
         sourceFile,
-        meta: payload.meta,
+        meta,
       });
     }
 
@@ -217,31 +208,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const { stdout } = await execFileAsync(
-      "pnpm",
-      [
-        "exec",
-        "tsx",
-        "--eval",
-        GENERATE_SCENARIOS_SCRIPT,
-        contractPath,
-        outDir,
-        sourceFile,
-        contractKey,
-      ],
-      { cwd: REPO_ROOT, maxBuffer: 20 * 1024 * 1024 },
-    );
-
-    const payload = parseJsonOutput<{ meta: unknown }>(
-      stdout,
-      "Scenario generation completed but response could not be parsed",
-    );
+    const meta = await runGenerateScenarios(contractPath, outDir, contractKey);
     return NextResponse.json({
       ok: true,
       action,
       contractKey,
       sourceFile,
-      meta: payload.meta,
+      meta,
     });
   } catch (error) {
     const message =
