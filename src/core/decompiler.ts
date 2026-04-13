@@ -109,15 +109,24 @@ function effectToText(effect: Effect): string {
   }
 }
 
-function clauseToText(clause: Clause): string {
+function normalizeProse(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function citationFor(clause: Clause): string {
+  if (clause.sourceSpan == null) return "";
+  return ` (source: chars ${clause.sourceSpan.start}\u2013${clause.sourceSpan.end})`;
+}
+
+function clauseParagraph(clause: Clause): string[] {
   const prefix = clause.modeled ? "" : "[UNMODELED] ";
-  const sourceTrace =
-    clause.sourceSpan != null
-      ? ` [source:${clause.sourceSpan.start}-${clause.sourceSpan.end}]`
-      : "";
-  const conditionText = clause.condition ? ` if ${boolExprToText(clause.condition)}` : "";
-  const tagText = clause.semanticTag ? ` {${clause.semanticTag}}` : "";
-  return `${prefix}${clause.id}${tagText}: ${effectToText(clause.effect)}${conditionText}.${sourceTrace}`;
+  const titlePart = clause.title ? ` \u2014 ${clause.title}` : "";
+  const heading = `${prefix}Clause ${clause.id}${titlePart}`;
+  const body = normalizeProse(clause.sourceText) || normalizeProse(effectToText(clause.effect));
+  const citation = citationFor(clause).trimStart();
+  return citation
+    ? [heading, body, citation, ""]
+    : [heading, body, ""];
 }
 
 export function decompileIrToEnglish(ir: ContractIR): string {
@@ -129,25 +138,37 @@ export function decompileIrToEnglish(ir: ContractIR): string {
   lines.push("");
 
   lines.push("Parties:");
-  for (const party of [...ir.parties].sort((a, b) => a.id.localeCompare(b.id))) {
-    lines.push(`- ${party.id} (${party.role}): ${party.name}`);
+  const sortedParties = [...ir.parties].sort((a, b) => a.id.localeCompare(b.id));
+  if (sortedParties.length === 0) {
+    lines.push("No parties were extracted from the contract.");
+  } else {
+    for (const party of sortedParties) {
+      lines.push(`${party.name} acts as the ${party.role} (${party.id}).`);
+    }
   }
   lines.push("");
 
   lines.push("Definitions:");
-  for (const definition of [...ir.definitions].sort((a, b) => a.id.localeCompare(b.id))) {
-    lines.push(`- ${definition.term}: ${definition.meaning}`);
+  const sortedDefinitions = [...ir.definitions].sort((a, b) => a.id.localeCompare(b.id));
+  if (sortedDefinitions.length === 0) {
+    lines.push("No definitions were extracted from the contract.");
+  } else {
+    for (const definition of sortedDefinitions) {
+      lines.push(`"${definition.term}" \u2014 ${normalizeProse(definition.meaning)}`);
+    }
   }
   lines.push("");
 
   lines.push("Executable Clauses:");
-  for (const clause of [...ir.clauses].sort((a, b) => a.id.localeCompare(b.id))) {
-    lines.push(`- ${clauseToText(clause)}`);
-  }
   lines.push("");
+  for (const clause of [...ir.clauses].sort((a, b) => a.id.localeCompare(b.id))) {
+    for (const line of clauseParagraph(clause)) {
+      lines.push(line);
+    }
+  }
 
   lines.push(
-    `Modeled coverage: ${ir.metadata.modeledClauseCount}/${ir.metadata.clauseCount} clause(s) modeled.`,
+    `Modeled coverage: ${ir.metadata.modeledClauseCount} of ${ir.metadata.clauseCount} clause(s) modeled.`,
   );
 
   return `${lines.join("\n")}\n`;
@@ -170,6 +191,21 @@ export interface ExecutionEnglishRun {
   execution: ExecutionResult;
 }
 
+function statusVerb(status: string): string {
+  switch (status) {
+    case "met":
+      return "was performed";
+    case "missed":
+      return "was missed";
+    case "pending":
+      return "remains pending";
+    case "waived":
+      return "was waived";
+    default:
+      return `ended in status "${status}"`;
+  }
+}
+
 export function decompileExecutionToEnglish(
   ir: ContractIR,
   runs: ExecutionEnglishRun[],
@@ -178,6 +214,7 @@ export function decompileExecutionToEnglish(
   lines.push(decompileIrToEnglish(ir).trimEnd());
   lines.push("");
   lines.push("Execution Outcomes:");
+  lines.push("");
 
   const sortedRuns = [...runs].sort((a, b) => a.archetype.localeCompare(b.archetype));
   for (const run of sortedRuns) {
@@ -187,76 +224,95 @@ export function decompileExecutionToEnglish(
     const initialFacts = run.scenario.initialState || {};
     const initialFactEntries = Object.entries(initialFacts).sort(([a], [b]) => a.localeCompare(b));
     const events = run.scenario.events || [];
+    const summary = run.execution.summary;
+    const obligations = run.execution.obligations;
+    const breaches = run.execution.breaches;
 
-    lines.push(`- Archetype ${run.archetype}: ${label}`);
-    lines.push("  Scenario Inputs:");
-    lines.push(`  - Scenario ID: ${scenarioId}`);
+    lines.push(`Archetype ${run.archetype}: ${label}`);
+    lines.push(`Scenario id: ${scenarioId}.`);
 
     if (assumptions.length > 0) {
-      lines.push(`  - Assumptions (${assumptions.length}):`);
+      lines.push(`The scenario rests on ${assumptions.length} assumption(s):`);
       for (const assumption of assumptions) {
-        lines.push(`    - ${assumption}`);
+        lines.push(`  \u2022 ${normalizeProse(assumption)}`);
       }
     } else {
-      lines.push("  - Assumptions: none.");
+      lines.push("The scenario records no narrative assumptions.");
     }
 
     if (initialFactEntries.length > 0) {
-      lines.push(`  - Initial facts (${initialFactEntries.length}):`);
-      for (const [key, value] of initialFactEntries) {
-        lines.push(`    - ${key}: ${valueToText(value)}`);
-      }
+      const factSentences = initialFactEntries.map(
+        ([key, value]) => `${key} = ${valueToText(value)}`,
+      );
+      lines.push(`Initial facts: ${factSentences.join("; ")}.`);
     } else {
-      lines.push("  - Initial facts: none.");
+      lines.push("Initial facts: none recorded.");
     }
 
     if (events.length > 0) {
-      lines.push(`  - Events (${events.length}):`);
+      lines.push(`The simulation replays ${events.length} event(s):`);
       for (const event of events) {
-        const amountText =
-          typeof event.amount === "number" ? `, amount=${money(event.amount)}` : "";
-        const metadataText =
-          event.metadata && Object.keys(event.metadata).length > 0
-            ? `, metadata=${stableStringify(event.metadata, 0)}`
+        const amountPart =
+          typeof event.amount === "number" && event.amount !== 0
+            ? ` for ${money(event.amount)}`
             : "";
-        lines.push(`    - ${event.id}: ${event.type} on ${event.date}${amountText}${metadataText}`);
-      }
-    } else {
-      lines.push("  - Events: none.");
-    }
-
-    lines.push("  Engine Outputs:");
-    lines.push(
-      `  - Summary: ending balance ${money(run.execution.summary.endingBalance)}, paid ${money(run.execution.summary.totalPaid)}, interest ${money(run.execution.summary.totalInterestCharged)}, fees ${money(run.execution.summary.totalFeesCharged)}, breached=${String(run.execution.summary.breached)}.`,
-    );
-    lines.push(
-      `  - Evaluation evidence: ${run.execution.ledger.length} ledger entr${run.execution.ledger.length === 1 ? "y" : "ies"}, ${run.execution.obligations.length} obligation(s), ${run.execution.breaches.length} breach(es).`,
-    );
-    lines.push(`  - Ledger entries: ${run.execution.ledger.length}.`);
-
-    if (run.execution.obligations.length > 0) {
-      lines.push("  - Obligation status:");
-      for (const obligation of run.execution.obligations) {
+        const metaPart =
+          event.metadata && Object.keys(event.metadata).length > 0
+            ? ` \u2014 ${stableStringify(event.metadata, 0)}`
+            : "";
         lines.push(
-          `  - ${obligation.id} (${obligation.clauseId}): status=${obligation.status}, due=${obligation.dueDate}, paid ${money(obligation.amountPaid)} of ${money(obligation.amountDue)}.`,
+          `  \u2022 On ${event.date}, ${event.type}${amountPart} (${event.id})${metaPart}.`,
         );
       }
     } else {
-      lines.push("  - Obligation status: none.");
+      lines.push("The simulation replays no events.");
     }
 
-    if (run.execution.breaches.length > 0) {
-      lines.push("  - Breaches:");
-      for (const breach of run.execution.breaches) {
-        const clauseText = breach.clauseId ? ` (clause ${breach.clauseId})` : "";
+    const breachedSentence = summary.breached
+      ? "The contract ended in breach."
+      : "The contract ended without breach.";
+    lines.push(
+      `Result: ${breachedSentence} Ending balance ${money(summary.endingBalance)}; total paid ${money(summary.totalPaid)}; interest charged ${money(summary.totalInterestCharged)}; fees charged ${money(summary.totalFeesCharged)}.`,
+    );
+    lines.push(
+      `Engine produced ${run.execution.ledger.length} ledger entr${run.execution.ledger.length === 1 ? "y" : "ies"}, ${obligations.length} obligation record(s), and ${breaches.length} breach record(s).`,
+    );
+
+    if (obligations.length > 0) {
+      lines.push("Obligation outcomes:");
+      for (const obligation of obligations) {
+        const dueText =
+          obligation.dueDate && obligation.dueDate !== "see_source_text"
+            ? ` (due ${obligation.dueDate})`
+            : "";
+        const paidText =
+          obligation.amountDue > 0
+            ? `, with ${money(obligation.amountPaid)} paid against ${money(obligation.amountDue)} due`
+            : "";
         lines.push(
-          `  - ${breach.id}: ${breach.type}${clauseText} on ${breach.date}: ${breach.description}`,
+          `  \u2022 Clause ${obligation.clauseId}${dueText}: the obligation ${statusVerb(obligation.status)}${paidText}. [${obligation.id}]`,
         );
       }
     } else {
-      lines.push("  - Breaches: none.");
+      lines.push("Obligation outcomes: none recorded.");
     }
+
+    if (breaches.length > 0) {
+      lines.push("Breaches recorded:");
+      for (const breach of breaches) {
+        const clauseText = breach.clauseId ? ` of clause ${breach.clauseId}` : "";
+        const dateText =
+          breach.date && breach.date !== "see_source_text" ? ` on ${breach.date}` : "";
+        lines.push(
+          `  \u2022 ${breach.type.replace(/_/g, " ")}${clauseText}${dateText}: ${normalizeProse(breach.description)} [${breach.id}]`,
+        );
+      }
+    } else {
+      lines.push("No breaches were recorded.");
+    }
+
+    lines.push("");
   }
 
-  return `${lines.join("\n")}\n`;
+  return `${lines.join("\n").replace(/\n+$/, "")}\n`;
 }
