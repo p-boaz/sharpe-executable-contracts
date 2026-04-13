@@ -71,7 +71,9 @@ test("user prompt lists every modeled obligation clause id verbatim", () => {
   assert.match(prompt, /Binding events to obligations:/);
   assert.match(prompt, /clause\.obligation\.deliver/);
   assert.match(prompt, /clause\.obligation\.pay/);
-  assert.ok(!/clause\.formula\.total/.test(prompt.split("Binding events to obligations:")[1] ?? ""),
+  const afterBinding = prompt.split("Binding events to obligations:")[1] ?? "";
+  const bindingSection = afterBinding.split("Contract hash:")[0] ?? "";
+  assert.ok(!/clause\.formula\.total/.test(bindingSection),
     "formula clauses must not appear in the obligation-id list");
 });
 
