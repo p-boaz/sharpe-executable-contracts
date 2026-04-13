@@ -1,7 +1,12 @@
 node_modules
 pnpm-lock.yaml
 dist
-out
+# Ignore run outputs under out/ except committed fixtures for the two
+# executor-supported contracts (credit-card + lease) — those let reviewers
+# and tests inspect artifact shape without an OpenAI key.
+out/*
+!out/credit-card-agreement/
+!out/galleria-atlanta-office-lease-american-safety-insurance-2006/
 .env
 
 # Local tool caches and screenshots

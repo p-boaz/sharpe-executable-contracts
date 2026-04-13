@@ -172,6 +172,85 @@ function checkScenario(
   }
 }
 
+export interface ScenarioPromptInputs {
+  ir: ContractIR;
+  contractText: string;
+  contractForPrompt: string;
+  promptTruncated: boolean;
+  archetype: Archetype;
+  family: ContractFamily;
+  attempt: number;
+  maxAttempts: number;
+  previousCandidate: Scenario | null;
+  lastFailure: string | null;
+}
+
+export const SCENARIO_SYSTEM_PROMPT =
+  "Generate one concrete execution scenario from contract markdown and extracted IR. Return strict JSON only. The scenario must be human-inspectable, include explicit assumptions, and satisfy every requirement listed in the user prompt. When the user prompt provides modeled obligation clause ids, bind performing events to the right id by setting event.metadata.clauseId to the exact id string; the downstream executor uses this as its primary match rule.";
+
+export function buildScenarioUserPrompt(inputs: ScenarioPromptInputs): string {
+  const {
+    ir,
+    contractText,
+    contractForPrompt,
+    promptTruncated,
+    archetype,
+    family,
+    attempt,
+    maxAttempts,
+    previousCandidate,
+    lastFailure,
+  } = inputs;
+
+  const modeledObligationIds = ir.clauses
+    .filter((c) => c.modeled && c.effect.kind === "obligation")
+    .map((c) => c.id);
+
+  const requirements = scenarioRequirements(archetype, family);
+
+  const bindingGuidance =
+    modeledObligationIds.length > 0
+      ? [
+          "Binding events to obligations:",
+          "- Each event that performs a modeled obligation MUST set `metadata.clauseId` to one of the ids below.",
+          "- The executor's matcher uses `event.metadata.clauseId === obligation.id` as its primary rule; without it, the event will not satisfy the obligation.",
+          "- Modeled obligation clause ids (pick from these exactly):",
+          ...modeledObligationIds.map((id) => `  - ${id}`),
+          "- If the contract's obligations cannot be performed inside this archetype's narrative, include the obligations anyway with events that reference them, but mark in `assumptions` why the archetype treats them as unmet.",
+        ].join("\n")
+      : "";
+
+  const repairSection =
+    previousCandidate == null
+      ? ""
+      : [
+          "",
+          `Previous candidate failed validation: ${lastFailure}`,
+          "Previous candidate JSON:",
+          JSON.stringify(previousCandidate),
+          "Return a corrected scenario that fixes the failure.",
+        ].join("\n");
+
+  return [
+    `Archetype: ${archetype.label} (${archetype.id})`,
+    `Intent: ${archetype.intent}`,
+    `Family: ${family}`,
+    `Attempt: ${attempt}/${maxAttempts}`,
+    "Validation requirements:",
+    ...requirements.map((rule) => `- ${rule}`),
+    ...(bindingGuidance ? ["", bindingGuidance] : []),
+    `Contract hash: ${hashContractText(contractText)}`,
+    `Contract prompt truncated: ${String(promptTruncated)}`,
+    "",
+    `Contract markdown${promptTruncated ? " (truncated excerpt)" : ""}:`,
+    contractForPrompt,
+    "",
+    "IR JSON:",
+    JSON.stringify(ir),
+    repairSection,
+  ].join("\n");
+}
+
 function scenarioRequirements(archetype: Archetype, family: ContractFamily): string[] {
   if (family === "credit_card" && archetype.id === "late-payment") {
     return [
@@ -222,42 +301,23 @@ export async function generateScenario(
 
   const { contractForPrompt, promptTruncated } = contractPromptContext(contractText);
 
-  const systemPrompt =
-    "Generate one concrete execution scenario from contract markdown and extracted IR. Return strict JSON only. The scenario must be human-inspectable, include explicit assumptions, and satisfy every requirement listed in the user prompt.";
-
-  const requirements = scenarioRequirements(archetype, family);
+  const systemPrompt = SCENARIO_SYSTEM_PROMPT;
   let lastFailure: string | null = null;
   let previousCandidate: Scenario | null = null;
 
   for (let attempt = 1; attempt <= MAX_SCENARIO_ATTEMPTS; attempt += 1) {
-    const repairSection =
-      previousCandidate == null
-        ? ""
-        : [
-            "",
-            `Previous candidate failed validation: ${lastFailure}`,
-            "Previous candidate JSON:",
-            JSON.stringify(previousCandidate),
-            "Return a corrected scenario that fixes the failure.",
-          ].join("\n");
-
-    const userPrompt = [
-      `Archetype: ${archetype.label} (${archetype.id})`,
-      `Intent: ${archetype.intent}`,
-      `Family: ${family}`,
-      `Attempt: ${attempt}/${MAX_SCENARIO_ATTEMPTS}`,
-      "Validation requirements:",
-      ...requirements.map((rule) => `- ${rule}`),
-      `Contract hash: ${hashContractText(contractText)}`,
-      `Contract prompt truncated: ${String(promptTruncated)}`,
-      "",
-      `Contract markdown${promptTruncated ? " (truncated excerpt)" : ""}:`,
+    const userPrompt = buildScenarioUserPrompt({
+      ir,
+      contractText,
       contractForPrompt,
-      "",
-      "IR JSON:",
-      JSON.stringify(ir),
-      repairSection,
-    ].join("\n");
+      promptTruncated,
+      archetype,
+      family,
+      attempt,
+      maxAttempts: MAX_SCENARIO_ATTEMPTS,
+      previousCandidate,
+      lastFailure,
+    });
 
     let llmScenario: Scenario;
     try {

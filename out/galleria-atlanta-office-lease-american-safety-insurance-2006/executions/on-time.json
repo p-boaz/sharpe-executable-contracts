@@ -1,0 +1,47 @@
+{
+  "breaches": [],
+  "ledger": [
+    {
+      "amount": 75360.54,
+      "balanceAfter": 75360.54,
+      "clauseId": "clause.obligation.monthly_rent",
+      "date": "2026-02-01",
+      "description": "Lease rent due: $75360.54",
+      "id": "stmt-lease-rent-001",
+      "kind": "statement"
+    },
+    {
+      "amount": 0,
+      "balanceAfter": 75360.54,
+      "date": "2026-02-01",
+      "description": "Lease notice event recorded",
+      "id": "evt-001",
+      "kind": "notice"
+    },
+    {
+      "amount": -75360.54,
+      "balanceAfter": 0,
+      "date": "2026-02-01",
+      "description": "Lease payment posted",
+      "id": "evt-002",
+      "kind": "payment"
+    }
+  ],
+  "obligations": [
+    {
+      "amountDue": 75360.54,
+      "amountPaid": 75360.54,
+      "clauseId": "clause.obligation.monthly_rent",
+      "dueDate": "2026-02-01",
+      "id": "obl-lease-rent-001",
+      "status": "met"
+    }
+  ],
+  "summary": {
+    "breached": false,
+    "endingBalance": 0,
+    "totalFeesCharged": 0,
+    "totalInterestCharged": 0,
+    "totalPaid": 75360.54
+  }
+}

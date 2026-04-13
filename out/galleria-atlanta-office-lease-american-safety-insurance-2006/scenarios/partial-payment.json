@@ -1,0 +1,59 @@
+{
+  "archetype": "partial-payment",
+  "assumptions": [
+    "Scenario generated for contract galleria-atlanta-office-lease-american-safety-insurance-2006",
+    "Archetype: Partial rent, triggers default review (partial-payment)",
+    "Modeled coverage in IR: 2/3",
+    "Rent invoice issued at cycle start",
+    "Payment is intentionally partial to exercise lease nonpayment behavior"
+  ],
+  "events": [
+    {
+      "date": "2026-02-01",
+      "id": "evt-001",
+      "metadata": {
+        "archetype": "partial-payment",
+        "type": "rent-invoice"
+      },
+      "type": "notice"
+    },
+    {
+      "amount": 45216.32,
+      "date": "2026-02-05",
+      "id": "evt-002",
+      "type": "payment"
+    },
+    {
+      "date": "2026-02-10",
+      "id": "evt-003",
+      "type": "due_check"
+    },
+    {
+      "date": "2026-02-10",
+      "id": "evt-004",
+      "metadata": {
+        "archetype": "partial-payment",
+        "type": "lease-default-review"
+      },
+      "type": "notice"
+    }
+  ],
+  "initialState": {
+    "contractFamily": "lease",
+    "irClauseCount": 3,
+    "irModeledClauseCount": 2,
+    "monthlyRent": 75360.54,
+    "rent_cycle_active": 1,
+    "rentDueDate": "2026-02-01"
+  },
+  "label": "Partial rent, triggers default review",
+  "metadata": {
+    "generation": {
+      "archetype": "partial-payment",
+      "llmRequested": false,
+      "llmUsed": false,
+      "mode": "deterministic_fallback"
+    }
+  },
+  "scenarioId": "scenario.lease.partial-payment"
+}

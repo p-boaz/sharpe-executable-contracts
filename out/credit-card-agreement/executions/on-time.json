@@ -1,0 +1,71 @@
+{
+  "breaches": [],
+  "ledger": [
+    {
+      "amount": 300,
+      "balanceAfter": 300,
+      "date": "2026-01-05",
+      "description": "Purchase posted",
+      "id": "evt-001",
+      "kind": "purchase"
+    },
+    {
+      "amount": 1.69,
+      "balanceAfter": 301.69,
+      "date": "2026-01-31",
+      "description": "Interest accrued for 26 day(s) at APR 7.9%",
+      "id": "interest-evt-002",
+      "kind": "interest"
+    },
+    {
+      "amount": 15,
+      "balanceAfter": 301.69,
+      "clauseId": "clause.obligation.minimum_payment",
+      "date": "2026-01-31",
+      "description": "Statement closed. Minimum due: $15.00",
+      "id": "evt-002",
+      "kind": "statement"
+    },
+    {
+      "amount": 1.31,
+      "balanceAfter": 303,
+      "date": "2026-02-20",
+      "description": "Interest accrued for 20 day(s) at APR 7.9%",
+      "id": "interest-evt-003",
+      "kind": "interest"
+    },
+    {
+      "amount": -300,
+      "balanceAfter": 3,
+      "date": "2026-02-20",
+      "description": "Payment posted",
+      "id": "evt-003",
+      "kind": "payment"
+    },
+    {
+      "amount": 0,
+      "balanceAfter": 3,
+      "date": "2026-02-26",
+      "description": "Notice event recorded",
+      "id": "evt-005",
+      "kind": "notice"
+    }
+  ],
+  "obligations": [
+    {
+      "amountDue": 15,
+      "amountPaid": 300,
+      "clauseId": "clause.obligation.minimum_payment",
+      "dueDate": "2026-02-25",
+      "id": "obl-evt-002",
+      "status": "met"
+    }
+  ],
+  "summary": {
+    "breached": false,
+    "endingBalance": 3,
+    "totalFeesCharged": 0,
+    "totalInterestCharged": 3,
+    "totalPaid": 300
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "clauses": [
+    {
+      "condition": {
+        "left": "rent_cycle_active",
+        "op": "eq",
+        "right": 1
+      },
+      "effect": {
+        "action": "Pay monthly rent by the first day of each month",
+        "actor": "tenant",
+        "due": {
+          "type": "on_date",
+          "value": "first_day_of_month"
+        },
+        "kind": "obligation"
+      },
+      "id": "clause.obligation.monthly_rent",
+      "modeled": true,
+      "semanticTag": "rent_obligation",
+      "sourceSpan": {
+        "end": 165346,
+        "start": 165008
+      },
+      "sourceText": "having been delivered by Landlord and having been accepted by the Tenant. 2. That the Lease calls for monthly rent installments of $75,360.54 to date and that the Tenant is paying monthly installments of rent of $75,360.54 which commenced to accrue on the 1st day of July, 2007. 3. That no advance rental",
+      "title": "Monthly rent due"
+    },
+    {
+      "effect": {
+        "expr": {
+          "op": "const",
+          "value": 75360.54
+        },
+        "kind": "formula",
+        "outputVar": "monthly_rent_due"
+      },
+      "id": "clause.formula.monthly_rent",
+      "modeled": true,
+      "semanticTag": "base_rent",
+      "sourceSpan": {
+        "end": 165346,
+        "start": 165008
+      },
+      "sourceText": "having been delivered by Landlord and having been accepted by the Tenant. 2. That the Lease calls for monthly rent installments of $75,360.54 to date and that the Tenant is paying monthly installments of rent of $75,360.54 which commenced to accrue on the 1st day of July, 2007. 3. That no advance rental",
+      "title": "Monthly rent amount"
+    },
+    {
+      "effect": {
+        "consequences": [
+          "Refer to source text for full remedies and cure mechanics"
+        ],
+        "kind": "default"
+      },
+      "id": "clause.default.tenant_default",
+      "modeled": false,
+      "semanticTag": "tenant_default",
+      "sourceSpan": {
+        "end": 88432,
+        "start": 88093
+      },
+      "sourceText": "der be an asset of Tenant under any bankruptcy, insolvency, or reorganization proceedings. 18. Default and 18. The following events shall be deemed to be events of default by Tenant under Remedies. this Lease: (a) Tenant shall fail to pay when or before due any sum",
+      "title": "Tenant default and remedies"
+    }
+  ],
+  "contractId": "galleria-atlanta-office-lease-american-safety-insurance-2006",
+  "currency": "USD",
+  "definitions": [],
+  "jurisdiction": "Georgia",
+  "metadata": {
+    "clauseCount": 3,
+    "extraction": {
+      "llmRequested": false,
+      "llmUsed": false,
+      "mode": "heuristic_fallback"
+    },
+    "extractionHash": "84f0e16e720cf957b1b4a40d6fe03565b2dcc1a2ee346a0eca6c46595b3df8fc",
+    "extractorVersion": "contract-ir-v1",
+    "modeledClauseCount": 2,
+    "sourceFile": "Galleria-Atlanta-office-lease-American-Safety-Insurance-2006.md"
+  },
+  "parties": [
+    {
+      "id": "landlord",
+      "name": "OTR, an Ohio general partnership",
+      "role": "landlord"
+    },
+    {
+      "id": "tenant",
+      "name": "AMERICAN SAFETY INSURANCE SERVICES, INC., a Georgia corporation",
+      "role": "tenant"
+    }
+  ],
+  "title": "Galleria Atlanta office lease American Safety Insurance 2006"
+}

@@ -1,0 +1,50 @@
+{
+  "archetype": "on-time",
+  "assumptions": [
+    "Scenario generated for contract galleria-atlanta-office-lease-american-safety-insurance-2006",
+    "Archetype: On-time rent payment (on-time)",
+    "Modeled coverage in IR: 2/3",
+    "Tenant pays full monthly rent on the due date",
+    "No default review should fire"
+  ],
+  "events": [
+    {
+      "date": "2026-02-01",
+      "id": "evt-001",
+      "metadata": {
+        "archetype": "on-time",
+        "type": "rent-invoice"
+      },
+      "type": "notice"
+    },
+    {
+      "amount": 75360.54,
+      "date": "2026-02-01",
+      "id": "evt-002",
+      "type": "payment"
+    },
+    {
+      "date": "2026-02-10",
+      "id": "evt-003",
+      "type": "due_check"
+    }
+  ],
+  "initialState": {
+    "contractFamily": "lease",
+    "irClauseCount": 3,
+    "irModeledClauseCount": 2,
+    "monthlyRent": 75360.54,
+    "rent_cycle_active": 1,
+    "rentDueDate": "2026-02-01"
+  },
+  "label": "On-time rent payment",
+  "metadata": {
+    "generation": {
+      "archetype": "on-time",
+      "llmRequested": false,
+      "llmUsed": false,
+      "mode": "deterministic_fallback"
+    }
+  },
+  "scenarioId": "scenario.lease.on-time"
+}

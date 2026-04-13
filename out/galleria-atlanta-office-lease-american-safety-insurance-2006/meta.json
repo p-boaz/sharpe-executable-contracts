@@ -1,0 +1,56 @@
+{
+  "contractId": "galleria-atlanta-office-lease-american-safety-insurance-2006",
+  "englishHash": "0cb04ce52f911de488e23d7f89c875cc6c9ecd868c26ca9702cae6ea4a37a9ed",
+  "family": "lease",
+  "generatedAt": "2026-04-12T23:21:49.338Z",
+  "irHash": "cd11ed3385dba742f1701af7aa9336993b1af38c7ab126f9eef9e305021235e5",
+  "llmMode": {
+    "reason": "off (--no-llm)",
+    "requestedByCli": false
+  },
+  "scenarios": [
+    {
+      "archetype": "on-time",
+      "breachCount": 0,
+      "breached": false,
+      "endingBalance": 0,
+      "label": "On-time rent payment",
+      "scenarioId": "scenario.lease.on-time"
+    },
+    {
+      "archetype": "partial-payment",
+      "breachCount": 1,
+      "breached": true,
+      "endingBalance": 30144.22,
+      "label": "Partial rent, triggers default review",
+      "scenarioId": "scenario.lease.partial-payment"
+    }
+  ],
+  "sourceFile": "Galleria-Atlanta-office-lease-American-Safety-Insurance-2006.md",
+  "stages": {
+    "extractIr": {
+      "llmRequested": false,
+      "llmUsed": false,
+      "mode": "heuristic_fallback"
+    },
+    "generateScenario": [
+      {
+        "archetype": "on-time",
+        "status": {
+          "llmRequested": false,
+          "llmUsed": false,
+          "mode": "deterministic_fallback"
+        }
+      },
+      {
+        "archetype": "partial-payment",
+        "status": {
+          "llmRequested": false,
+          "llmUsed": false,
+          "mode": "deterministic_fallback"
+        }
+      }
+    ]
+  },
+  "title": "Galleria Atlanta office lease American Safety Insurance 2006"
+}

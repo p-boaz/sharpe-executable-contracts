@@ -1,0 +1,63 @@
+{
+  "archetype": "over-limit",
+  "assumptions": [
+    "Scenario generated for contract credit-card-agreement",
+    "Archetype: Over credit limit at statement close (over-limit)",
+    "Modeled coverage in IR: 4/8",
+    "Opening activity is set to exceed the credit limit at statement close",
+    "Over-limit fee is expected to fire"
+  ],
+  "events": [
+    {
+      "amount": 1080,
+      "date": "2026-01-05",
+      "id": "evt-001",
+      "type": "purchase"
+    },
+    {
+      "date": "2026-01-31",
+      "id": "evt-002",
+      "type": "statement_close"
+    },
+    {
+      "amount": 50,
+      "date": "2026-02-20",
+      "id": "evt-003",
+      "type": "payment"
+    },
+    {
+      "date": "2026-02-26",
+      "id": "evt-004",
+      "type": "due_check"
+    },
+    {
+      "date": "2026-02-26",
+      "id": "evt-005",
+      "metadata": {
+        "archetype": "over-limit",
+        "type": "over-limit-review"
+      },
+      "type": "notice"
+    }
+  ],
+  "initialState": {
+    "apr": 7.9,
+    "balance": 0,
+    "contractFamily": "credit_card",
+    "creditLimit": 1000,
+    "dueDate": "2026-02-25",
+    "irClauseCount": 8,
+    "irModeledClauseCount": 4,
+    "statementDate": "2026-01-31"
+  },
+  "label": "Over credit limit at statement close",
+  "metadata": {
+    "generation": {
+      "archetype": "over-limit",
+      "llmRequested": false,
+      "llmUsed": false,
+      "mode": "deterministic_fallback"
+    }
+  },
+  "scenarioId": "scenario.credit-card.over-limit"
+}

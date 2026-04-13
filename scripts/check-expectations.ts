@@ -602,6 +602,12 @@ async function loadIrForExpectation(
     return { ir: fromOut, source: path.relative(repoRoot, irPath) };
   }
 
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error(
+      `OPENAI_API_KEY is required to extract IR for ${doc.contractId}. Either provide cached IR at ${path.relative(repoRoot, irPath)} or set the key before passing --extract.`,
+    );
+  }
+
   const contractPath = path.resolve(repoRoot, doc.contractFile);
   const contractText = await readFile(contractPath, "utf8");
   const extracted = await extractIr({
@@ -695,12 +701,6 @@ function printContractSummary(summary: ContractSummary, repoRoot: string): void 
 }
 
 async function main(): Promise<void> {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error(
-      "OPENAI_API_KEY is required. Expectation checks now run in LLM-required mode only.",
-    );
-  }
-
   const repoRoot = process.cwd();
   const options = parseArgs(process.argv.slice(2));
   const expectationFiles =
@@ -712,11 +712,12 @@ async function main(): Promise<void> {
     throw new Error("No expectation YAML files found.");
   }
 
+  const llmAvailable = Boolean(process.env.OPENAI_API_KEY);
   process.stdout.write(
     [
       `Expectation checker`,
       `  files: ${expectationFiles.length}`,
-      `  llm mode: on (required)`,
+      `  llm mode: ${llmAvailable ? "available" : "off (no OPENAI_API_KEY)"}`,
       `  ir root: ${options.irRoot}`,
       `  force extract: ${String(options.forceExtract)}`,
       `  strict supporting: ${String(options.strictSupporting)}`,

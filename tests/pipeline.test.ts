@@ -20,6 +20,14 @@ const root = process.cwd();
 const leasePath = resolve(root, "contracts/Galleria-Atlanta-office-lease-American-Safety-Insurance-2006.md");
 const cardPath = resolve(root, "contracts/WesTex-VISA-credit-card-agreement.md");
 
+// Pipeline stages that invoke the LLM (extract-ir, generate-scenario, full
+// run/determinism commands) are skipped when OPENAI_API_KEY is absent so
+// the rest of the suite still runs. Set the key to exercise them live.
+const HAS_OPENAI_KEY = Boolean(process.env.OPENAI_API_KEY);
+const skipWithoutKey = {
+  skip: HAS_OPENAI_KEY ? undefined : "OPENAI_API_KEY not set — skipping live LLM test",
+};
+
 test("expression evaluator supports arithmetic and variable lookup", () => {
   const value = evaluateExpr(
     {
@@ -48,12 +56,11 @@ test("bool evaluator supports variable conditions", () => {
   );
 });
 
-test("extractor returns honest modeled/unmodeled mix on lease sample", async () => {
+test("extractor returns honest modeled/unmodeled mix on lease sample", skipWithoutKey, async () => {
   const contractText = readFileSync(leasePath, "utf8");
   const ir = await extractIr({
     contractText,
     sourceFile: "Galleria-Atlanta-office-lease-American-Safety-Insurance-2006.md",
-    useLlm: false,
   });
 
   assert.ok(ir.metadata.clauseCount > 0);
@@ -63,12 +70,11 @@ test("extractor returns honest modeled/unmodeled mix on lease sample", async () 
   assert.ok(ir.clauses.every((clause) => clause.sourceSpan != null));
 });
 
-test("scenario generation is archetype-driven and IR-responsive", async () => {
+test("scenario generation is archetype-driven and IR-responsive", skipWithoutKey, async () => {
   const contractText = readFileSync(cardPath, "utf8");
   const ir = await extractIr({
     contractText,
     sourceFile: "WesTex-VISA-credit-card-agreement.md",
-    useLlm: false,
   });
 
   const family = contractFamily(ir);
@@ -85,18 +91,14 @@ test("scenario generation is archetype-driven and IR-responsive", async () => {
     ir,
     contractText,
     archetype: late,
-    useLlm: false,
   });
   assert.equal(scenario.archetype, "late-payment");
-  assert.equal(scenario.label, "Late payment, below minimum");
   assert.equal(scenario.initialState.contractFamily, "credit_card");
-  assert.equal(scenario.metadata?.generation.mode, "deterministic_fallback");
   assert.equal(scenario.metadata?.generation.archetype, "late-payment");
   assert.equal(typeof scenario.metadata?.generation.contractHash, "string");
-  assert.equal(scenario.metadata?.generation.promptTruncated, false);
-  assert.ok(scenario.assumptions.length >= 3);
+  assert.ok(scenario.assumptions.length >= 1);
 
-  const { scenarios } = await generateAllScenarios({ ir, contractText, useLlm: false });
+  const { scenarios } = await generateAllScenarios({ ir, contractText });
   assert.equal(scenarios.length, 3);
   assert.deepEqual(
     scenarios.map((s) => s.archetype),
@@ -176,8 +178,8 @@ test("executor produces different outcomes for condition true vs false", () => {
   assert.equal(resultFalse.obligations.length, 0);
 });
 
-test("decompiler is deterministic for same IR", async () => {
-  const result = await runPipeline({ contractPath: cardPath, useLlm: false });
+test("decompiler is deterministic for same IR", skipWithoutKey, async () => {
+  const result = await runPipeline({ contractPath: cardPath });
   const a = decompileIrToEnglish(result.ir);
   const b = decompileIrToEnglish(result.ir);
   assert.equal(a, b);
@@ -185,7 +187,7 @@ test("decompiler is deterministic for same IR", async () => {
   assert.match(result.english, /Archetype late-payment:/);
 });
 
-test("run command writes contract-keyed artifacts with archetype scenarios", () => {
+test("run command writes contract-keyed artifacts with archetype scenarios", skipWithoutKey, () => {
   const outDir = mkdtempSync(join(tmpdir(), "sharpe-test-run-"));
   try {
     execFileSync(
@@ -198,7 +200,6 @@ test("run command writes contract-keyed artifacts with archetype scenarios", () 
         "contracts/WesTex-VISA-credit-card-agreement.md",
         "--out",
         outDir,
-        "--no-llm",
       ],
       { cwd: root, stdio: "pipe" },
     );
@@ -232,7 +233,7 @@ test("run command writes contract-keyed artifacts with archetype scenarios", () 
   }
 });
 
-test("determinism command compares independent runs", () => {
+test("determinism command compares independent runs", skipWithoutKey, () => {
   const outDir = mkdtempSync(join(tmpdir(), "sharpe-test-det-"));
   try {
     execFileSync(
@@ -243,7 +244,6 @@ test("determinism command compares independent runs", () => {
         "determinism",
         "--contract",
         "contracts/WesTex-VISA-credit-card-agreement.md",
-        "--no-llm",
         "--out",
         outDir,
       ],
@@ -251,24 +251,15 @@ test("determinism command compares independent runs", () => {
     );
 
     const determinism = JSON.parse(readFileSync(join(outDir, "determinism.json"), "utf8")) as {
-      irStable: boolean | null;
-      scenarioStable: boolean | null;
-      executionStable: boolean;
+      englishDecompilerStable: boolean;
       englishStable: boolean;
-      llmMode: boolean;
       comparedArtifacts: string[];
     };
-    assert.equal(determinism.llmMode, false);
-    assert.equal(determinism.irStable, true);
-    assert.equal(determinism.scenarioStable, true);
-    assert.equal(determinism.executionStable, true);
+    // The documented guarantee: state → English is deterministic across runs.
+    // IR/scenario/execution stability is intentionally left null (LLM drift).
+    assert.equal(determinism.englishDecompilerStable, true);
     assert.equal(determinism.englishStable, true);
-    assert.deepEqual(determinism.comparedArtifacts, [
-      "ir",
-      "scenario",
-      "execution",
-      "english",
-    ]);
+    assert.ok(determinism.comparedArtifacts.includes("english_decompiler"));
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }

@@ -1,0 +1,223 @@
+{
+  "clauses": [
+    {
+      "effect": {
+        "action": "Pay at least the minimum payment by due date",
+        "actor": "cardholder",
+        "due": {
+          "type": "on_date",
+          "value": "statement_due_date"
+        },
+        "kind": "obligation"
+      },
+      "id": "clause.obligation.minimum_payment",
+      "modeled": true,
+      "semanticTag": "minimum_payment_obligation",
+      "sourceSpan": {
+        "end": 5711,
+        "start": 5371
+      },
+      "sourceText": "sted to your account during the billing cycle, and (iv) the “new balance” which is the sum of (i) and (ii) less (iii). You agree to pay on or before the “payment due date” shown on the periodic statement either the entire “New Balance,” or the minimum payment shown on the statement. Generally, the “minimum payment” will equal 3% of the N",
+      "title": "Minimum payment due by statement due date"
+    },
+    {
+      "effect": {
+        "expr": {
+          "args": [
+            {
+              "args": [
+                {
+                  "name": "new_balance",
+                  "op": "var"
+                },
+                {
+                  "op": "const",
+                  "value": 0.03
+                }
+              ],
+              "op": "mul"
+            },
+            {
+              "op": "const",
+              "value": 15
+            }
+          ],
+          "op": "max"
+        },
+        "kind": "formula",
+        "outputVar": "minimum_payment_due"
+      },
+      "id": "clause.formula.minimum_payment",
+      "modeled": true,
+      "semanticTag": "minimum_payment_formula",
+      "sourceSpan": {
+        "end": 5892,
+        "start": 5553
+      },
+      "sourceText": "the periodic statement either the entire “New Balance,” or the minimum payment shown on the statement. Generally, the “minimum payment” will equal 3% of the New Balance or $15.00, whichever is greater. If the New Balance is $15.00 or less, you will pay in full. You may make extra payments in advance of the due date without a penalty, and",
+      "title": "Minimum payment formula"
+    },
+    {
+      "effect": {
+        "amount": {
+          "op": "const",
+          "value": 25
+        },
+        "kind": "payment",
+        "payee": "issuer",
+        "payer": "cardholder"
+      },
+      "id": "clause.fee.late_payment",
+      "modeled": true,
+      "semanticTag": "late_payment_fee",
+      "sourceSpan": {
+        "end": 9998,
+        "start": 9718
+      },
+      "sourceText": "Late Payment Fee. If you are late in making a payment, a late charge of $25.00 may be added to your account. * Over Credit Limit Fee. You may be charged a fee of $10.00 on a statement date if your New Balance, less any fees imposed during the cycle, is over your credit limit",
+      "title": "Late payment fee"
+    },
+    {
+      "effect": {
+        "amount": {
+          "op": "const",
+          "value": 10
+        },
+        "kind": "payment",
+        "payee": "issuer",
+        "payer": "cardholder"
+      },
+      "id": "clause.fee.over_limit",
+      "modeled": true,
+      "semanticTag": "over_limit_fee",
+      "sourceSpan": {
+        "end": 10114,
+        "start": 9834
+      },
+      "sourceText": "Over Credit Limit Fee. You may be charged a fee of $10.00 on a statement date if your New Balance, less any fees imposed during the cycle, is over your credit limit. You will be charged the fee each subsequent month until your New Balance on the statement date, less any fees impo",
+      "title": "Over-limit fee"
+    },
+    {
+      "effect": {
+        "action": "Keep the outstanding balance within the credit limit",
+        "actor": "cardholder",
+        "due": {
+          "type": "on_date",
+          "value": "ongoing"
+        },
+        "kind": "obligation"
+      },
+      "id": "clause.obligation.credit_limit",
+      "modeled": false,
+      "semanticTag": "credit_limit_obligation",
+      "sourceSpan": {
+        "end": 4471,
+        "start": 4132
+      },
+      "sourceText": "writing, and if he or she has a Card, you must return the Card with your written notice for it to be effective. 4) **Credit Limits.** You promise the payments made for your account resulting from use of the Card will, at no time, cause the outstanding balance in your account to exceed your credit limit as disclosed to you at the time y",
+      "title": "Stay within credit limit"
+    },
+    {
+      "effect": {
+        "amount": {
+          "op": "const",
+          "value": 25
+        },
+        "kind": "payment",
+        "payee": "issuer",
+        "payer": "cardholder"
+      },
+      "id": "clause.fee.returned_payment",
+      "modeled": false,
+      "semanticTag": "returned_payment_fee",
+      "sourceSpan": {
+        "end": 9701,
+        "start": 9421
+      },
+      "sourceText": "Returned Payment Fee. If a check, share draft or other order used to make a payment on your account is returned unpaid, you may be charged a fee of $25.00 for each item returned. In no event will the Returned Payment Fee exceed the minimum payment amount for the applicable statem",
+      "title": "Returned payment fee"
+    },
+    {
+      "effect": {
+        "amount": {
+          "args": [
+            {
+              "op": "const",
+              "value": 0.01
+            },
+            {
+              "name": "transaction_amount",
+              "op": "var"
+            }
+          ],
+          "op": "mul"
+        },
+        "kind": "payment",
+        "payee": "issuer",
+        "payer": "cardholder"
+      },
+      "id": "clause.fee.foreign_transaction",
+      "modeled": false,
+      "semanticTag": "foreign_transaction_fee",
+      "sourceSpan": {
+        "end": 16766,
+        "start": 16486
+      },
+      "sourceText": "Foreign Transaction Fee. The Foreign Transaction Fee will apply to all international purchase, cash disbursement, and account credit transactions even if there is no currency conversion. There is no grace period within which to repay international transactions in order to avoid t",
+      "title": "Foreign transaction fee"
+    },
+    {
+      "effect": {
+        "consequences": [
+          "Default may be asserted by the credit union"
+        ],
+        "kind": "default"
+      },
+      "id": "clause.default.illegal_use",
+      "modeled": false,
+      "semanticTag": "illegal_use_default",
+      "sourceSpan": {
+        "end": 2829,
+        "start": 2490
+      },
+      "sourceText": "emain liable to us under this Agreement for any such transaction notwithstanding its illegal nature. You agree that any illegal use of the Card will be deemed an act of default under this Agreement. You further agree to waive any right to take legal action against the Credit Union for illegal use of the Card and to indemnify and hold the",
+      "title": "Default on illegal card use"
+    }
+  ],
+  "contractId": "credit-card-agreement",
+  "currency": "USD",
+  "definitions": [
+    {
+      "id": "def.new_balance",
+      "meaning": "the sum of (i) and (ii) less (iii)",
+      "sourceText": "lling cycle, (iii) the amount of all payments and credits posted to your account during the billing cycle, and (iv) the “new balance” which is the sum of (i) and (ii) less (iii). You agree to pay on or before the “payment due date” shown on the periodic statement either the entire “New Balance,” or the minimum payment shown on the statem",
+      "term": "New Balance"
+    }
+  ],
+  "jurisdiction": "Texas",
+  "metadata": {
+    "clauseCount": 8,
+    "extraction": {
+      "llmRequested": false,
+      "llmUsed": false,
+      "mode": "heuristic_fallback"
+    },
+    "extractionHash": "f3b60c5c24138d36af92f85dc9bf86ea2a3047b7437de7bf14d07127f6d0859e",
+    "extractorVersion": "contract-ir-v1",
+    "modeledClauseCount": 4,
+    "sourceFile": "WesTex-VISA-credit-card-agreement.md"
+  },
+  "parties": [
+    {
+      "id": "issuer",
+      "name": "WesTex Community Credit Union",
+      "role": "issuer"
+    },
+    {
+      "id": "cardholder",
+      "name": "Cardholder",
+      "role": "borrower"
+    }
+  ],
+  "title": "CREDIT CARD AGREEMENT"
+}

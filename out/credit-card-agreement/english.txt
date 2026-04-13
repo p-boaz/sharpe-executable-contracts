@@ -1,0 +1,22 @@
+Contract: CREDIT CARD AGREEMENT
+Contract ID: credit-card-agreement
+Currency: USD
+
+Parties:
+- cardholder (borrower): Cardholder
+- issuer (issuer): WesTex Community Credit Union
+
+Definitions:
+- New Balance: the sum of (i) and (ii) less (iii)
+
+Executable Clauses:
+- [UNMODELED] clause.default.illegal_use {illegal_use_default}: default consequences: Default may be asserted by the credit union. [source:2490-2829]
+- [UNMODELED] clause.fee.foreign_transaction {foreign_transaction_fee}: cardholder pays issuer (0.01 * transaction_amount). [source:16486-16766]
+- clause.fee.late_payment {late_payment_fee}: cardholder pays issuer 25. [source:9718-9998]
+- clause.fee.over_limit {over_limit_fee}: cardholder pays issuer 10. [source:9834-10114]
+- [UNMODELED] clause.fee.returned_payment {returned_payment_fee}: cardholder pays issuer 25. [source:9421-9701]
+- clause.formula.minimum_payment {minimum_payment_formula}: minimum_payment_due is computed as max((new_balance * 0.03), 15). [source:5553-5892]
+- [UNMODELED] clause.obligation.credit_limit {credit_limit_obligation}: cardholder must Keep the outstanding balance within the credit limit on ongoing. [source:4132-4471]
+- clause.obligation.minimum_payment {minimum_payment_obligation}: cardholder must Pay at least the minimum payment by due date on statement_due_date. [source:5371-5711]
+
+Modeled coverage: 4/8 clause(s) modeled.

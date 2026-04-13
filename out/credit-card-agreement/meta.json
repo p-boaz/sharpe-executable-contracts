@@ -1,0 +1,72 @@
+{
+  "contractId": "credit-card-agreement",
+  "englishHash": "4f542201658bf6134c1ca043c9cd6ecdfbdb45d983801311a53e567c6f1d0268",
+  "family": "credit_card",
+  "generatedAt": "2026-04-12T23:21:48.541Z",
+  "irHash": "bf39bf0868b9541b34633539db726c5a160af86ea60e6556380de61512834164",
+  "llmMode": {
+    "reason": "off (--no-llm)",
+    "requestedByCli": false
+  },
+  "scenarios": [
+    {
+      "archetype": "on-time",
+      "breachCount": 0,
+      "breached": false,
+      "endingBalance": 3,
+      "label": "On-time full payment",
+      "scenarioId": "scenario.credit-card.on-time"
+    },
+    {
+      "archetype": "late-payment",
+      "breachCount": 1,
+      "breached": true,
+      "endingBalance": 308.46,
+      "label": "Late payment, below minimum",
+      "scenarioId": "scenario.credit-card.late-payment"
+    },
+    {
+      "archetype": "over-limit",
+      "breachCount": 1,
+      "breached": true,
+      "endingBalance": 1052.18,
+      "label": "Over credit limit at statement close",
+      "scenarioId": "scenario.credit-card.over-limit"
+    }
+  ],
+  "sourceFile": "WesTex-VISA-credit-card-agreement.md",
+  "stages": {
+    "extractIr": {
+      "llmRequested": false,
+      "llmUsed": false,
+      "mode": "heuristic_fallback"
+    },
+    "generateScenario": [
+      {
+        "archetype": "on-time",
+        "status": {
+          "llmRequested": false,
+          "llmUsed": false,
+          "mode": "deterministic_fallback"
+        }
+      },
+      {
+        "archetype": "late-payment",
+        "status": {
+          "llmRequested": false,
+          "llmUsed": false,
+          "mode": "deterministic_fallback"
+        }
+      },
+      {
+        "archetype": "over-limit",
+        "status": {
+          "llmRequested": false,
+          "llmUsed": false,
+          "mode": "deterministic_fallback"
+        }
+      }
+    ]
+  },
+  "title": "CREDIT CARD AGREEMENT"
+}

@@ -1,0 +1,63 @@
+{
+  "archetype": "on-time",
+  "assumptions": [
+    "Scenario generated for contract credit-card-agreement",
+    "Archetype: On-time full payment (on-time)",
+    "Modeled coverage in IR: 4/8",
+    "Full payment posted before due date",
+    "No late fee or over-limit fee should apply"
+  ],
+  "events": [
+    {
+      "amount": 300,
+      "date": "2026-01-05",
+      "id": "evt-001",
+      "type": "purchase"
+    },
+    {
+      "date": "2026-01-31",
+      "id": "evt-002",
+      "type": "statement_close"
+    },
+    {
+      "amount": 300,
+      "date": "2026-02-20",
+      "id": "evt-003",
+      "type": "payment"
+    },
+    {
+      "date": "2026-02-26",
+      "id": "evt-004",
+      "type": "due_check"
+    },
+    {
+      "date": "2026-02-26",
+      "id": "evt-005",
+      "metadata": {
+        "archetype": "on-time",
+        "type": "account-review"
+      },
+      "type": "notice"
+    }
+  ],
+  "initialState": {
+    "apr": 7.9,
+    "balance": 0,
+    "contractFamily": "credit_card",
+    "creditLimit": 1500,
+    "dueDate": "2026-02-25",
+    "irClauseCount": 8,
+    "irModeledClauseCount": 4,
+    "statementDate": "2026-01-31"
+  },
+  "label": "On-time full payment",
+  "metadata": {
+    "generation": {
+      "archetype": "on-time",
+      "llmRequested": false,
+      "llmUsed": false,
+      "mode": "deterministic_fallback"
+    }
+  },
+  "scenarioId": "scenario.credit-card.on-time"
+}

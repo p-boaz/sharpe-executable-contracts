@@ -1,0 +1,16 @@
+Contract: Galleria Atlanta office lease American Safety Insurance 2006
+Contract ID: galleria-atlanta-office-lease-american-safety-insurance-2006
+Currency: USD
+
+Parties:
+- landlord (landlord): OTR, an Ohio general partnership
+- tenant (tenant): AMERICAN SAFETY INSURANCE SERVICES, INC., a Georgia corporation
+
+Definitions:
+
+Executable Clauses:
+- [UNMODELED] clause.default.tenant_default {tenant_default}: default consequences: Refer to source text for full remedies and cure mechanics. [source:88093-88432]
+- clause.formula.monthly_rent {base_rent}: monthly_rent_due is computed as 75360.54. [source:165008-165346]
+- clause.obligation.monthly_rent {rent_obligation}: tenant must Pay monthly rent by the first day of each month on first_day_of_month if rent_cycle_active == 1. [source:165008-165346]
+
+Modeled coverage: 2/3 clause(s) modeled.

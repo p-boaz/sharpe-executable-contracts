@@ -1,0 +1,64 @@
+{
+  "archetype": "late-payment",
+  "assumptions": [
+    "Scenario generated for contract credit-card-agreement",
+    "Archetype: Late payment, below minimum (late-payment)",
+    "Modeled coverage in IR: 4/8",
+    "Payment is intentionally below the likely minimum due",
+    "Payment is posted after the statement due date",
+    "Late fee path is expected to fire"
+  ],
+  "events": [
+    {
+      "amount": 300,
+      "date": "2026-01-05",
+      "id": "evt-001",
+      "type": "purchase"
+    },
+    {
+      "date": "2026-01-31",
+      "id": "evt-002",
+      "type": "statement_close"
+    },
+    {
+      "amount": 20,
+      "date": "2026-02-27",
+      "id": "evt-003",
+      "type": "payment"
+    },
+    {
+      "date": "2026-02-26",
+      "id": "evt-004",
+      "type": "due_check"
+    },
+    {
+      "date": "2026-02-26",
+      "id": "evt-005",
+      "metadata": {
+        "archetype": "late-payment",
+        "type": "late-payment-review"
+      },
+      "type": "notice"
+    }
+  ],
+  "initialState": {
+    "apr": 7.9,
+    "balance": 0,
+    "contractFamily": "credit_card",
+    "creditLimit": 1500,
+    "dueDate": "2026-02-25",
+    "irClauseCount": 8,
+    "irModeledClauseCount": 4,
+    "statementDate": "2026-01-31"
+  },
+  "label": "Late payment, below minimum",
+  "metadata": {
+    "generation": {
+      "archetype": "late-payment",
+      "llmRequested": false,
+      "llmUsed": false,
+      "mode": "deterministic_fallback"
+    }
+  },
+  "scenarioId": "scenario.credit-card.late-payment"
+}
