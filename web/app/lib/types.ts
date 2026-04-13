@@ -95,6 +95,7 @@ export interface Scenario {
   scenarioId?: string;
   archetype?: string;
   label?: string;
+  summary?: string;
   assumptions?: string[];
   initialState?: Record<string, unknown>;
   events?: ScenarioEvent[];
@@ -129,6 +130,7 @@ export interface ContractMeta {
     archetype: string;
     label: string;
     scenarioId: string;
+    summary?: string;
     endingBalance?: number;
     breached?: boolean;
     breachCount?: number;

@@ -63,6 +63,12 @@ export async function generateRuns(
   return { family, runs };
 }
 
+/**
+ * Imported by name (as a string literal) from the subprocess template in
+ * `web/app/api/execute/route.ts` — static analyzers like knip cannot see
+ * that reference, so this export must be retained.
+ * @public
+ */
 export function decompileRuns(ir: ContractIR, runs: ScenarioRun[]): string {
   return decompileExecutionToEnglish(ir, runs);
 }

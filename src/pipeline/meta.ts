@@ -21,6 +21,7 @@ export interface MetaScenarioSummary {
   archetype: string;
   label: string;
   scenarioId: string;
+  summary?: string;
   endingBalance?: number;
   breached?: boolean;
   breachCount?: number;
@@ -50,7 +51,7 @@ export function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export function slugifyContractKey(value: string): string {
+function slugifyContractKey(value: string): string {
   return value
     .toLowerCase()
     .replace(/\.md$/i, "")
@@ -65,7 +66,7 @@ export function contractIdFor(ir: ContractIR, contractPath: string): string {
   return slugifyContractKey(basename(contractPath));
 }
 
-export function scenarioStageStatus(scenario: Scenario): StageLlmStatus {
+function scenarioStageStatus(scenario: Scenario): StageLlmStatus {
   const fromScenario = scenario.metadata?.generation;
   if (fromScenario) {
     return {
@@ -129,6 +130,7 @@ export function buildMeta(input: BuildMetaInput): ContractMeta {
         archetype: run.archetype,
         label: run.scenario.label ?? run.archetype,
         scenarioId: run.scenario.scenarioId,
+        ...(run.scenario.summary ? { summary: run.scenario.summary } : {}),
         endingBalance: run.execution.summary.endingBalance,
         breached: run.execution.summary.breached,
         breachCount: run.execution.breaches.length,

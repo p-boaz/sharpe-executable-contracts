@@ -33,6 +33,7 @@ const MAX_SCENARIO_ATTEMPTS = 3;
 
 const ScenarioSchema = z.object({
   scenarioId: z.string().min(1),
+  summary: z.string().min(1),
   assumptions: z.array(z.string()),
   initialState: z.record(z.string(), z.unknown()),
   events: z.array(
@@ -56,9 +57,14 @@ const ScenarioSchema = z.object({
 const scenarioJsonSchema: Record<string, unknown> = {
   type: "object",
   additionalProperties: false,
-  required: ["scenarioId", "assumptions", "initialState", "events"],
+  required: ["scenarioId", "summary", "assumptions", "initialState", "events"],
   properties: {
     scenarioId: { type: "string" },
+    summary: {
+      type: "string",
+      description:
+        "Plain-English description of what this scenario exercises — the shape of the timeline and the outcome it's designed to probe. One to three sentences; detail proportional to scenario complexity. Shown on the scenario card in the UI, so write for a reader who hasn't read the contract.",
+    },
     assumptions: { type: "array", items: { type: "string" } },
     initialState: {
       type: "object",
@@ -156,6 +162,7 @@ function normalizeScenario(raw: unknown): Scenario {
   const parsed = ScenarioSchema.parse(raw);
   return {
     ...parsed,
+    summary: parsed.summary.trim(),
     events: [...parsed.events]
       .map((event) => {
         const base = {
@@ -203,7 +210,7 @@ export interface ScenarioPromptInputs {
 }
 
 export const SCENARIO_SYSTEM_PROMPT =
-  "Generate one concrete execution scenario from contract markdown and extracted IR. Return strict JSON only. The scenario must be human-inspectable, include explicit assumptions, and satisfy every requirement listed in the user prompt. When the user prompt provides modeled obligation clause ids, bind performing events to the right id by setting event.metadata.clauseId to the exact id string; the downstream executor uses this as its primary match rule.";
+  "Generate one concrete execution scenario from contract markdown and extracted IR. Return strict JSON only. The scenario must be human-inspectable, include explicit assumptions, and satisfy every requirement listed in the user prompt. Always include a `summary` field: one to three plain-English sentences describing what this scenario exercises (the shape of the timeline and the outcome it probes), scaled to scenario complexity, written for a UI reader who hasn't read the contract. When the user prompt provides modeled obligation clause ids, bind performing events to the right id by setting event.metadata.clauseId to the exact id string; the downstream executor uses this as its primary match rule.";
 
 export function buildScenarioUserPrompt(inputs: ScenarioPromptInputs): string {
   const {

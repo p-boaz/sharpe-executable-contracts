@@ -23,6 +23,10 @@ export interface Scenario {
   scenarioId: string;
   archetype?: string;
   label?: string;
+  // One-sentence human-readable description of the scenario, produced by
+  // the generator alongside the events. Surfaced on scenario cards so
+  // users can see what the scenario does without parsing assumptions.
+  summary?: string;
   assumptions: string[];
   initialState: Record<string, unknown>;
   events: ScenarioEvent[];

@@ -273,6 +273,7 @@ function buildMetadata(
   sourceFile: string,
   clauses: Clause[],
   extractionMode: ExtractionMode,
+  extractionWarnings: string[] = [],
 ): ContractMetadata {
   const llmUsed = extractionMode === "llm";
   return {
@@ -286,6 +287,7 @@ function buildMetadata(
       llmUsed,
       mode: extractionMode,
     },
+    ...(extractionWarnings.length > 0 ? { extractionWarnings } : {}),
   };
 }
 
@@ -795,9 +797,21 @@ function normalizeTemporalRule(raw: unknown, depth = 0): TemporalRule {
   return { type: "on_date", value: "see_source_text" };
 }
 
-function normalizeExpr(raw: unknown, depth = 0): Expr {
-  if (!raw || typeof raw !== "object" || depth > 4) {
+// `warnings` / `path` are threaded through so that every silent-zero
+// fallback becomes visible in metadata.extractionWarnings. Without this,
+// malformed LLM output (e.g. bare numbers, missing `op`) would collapse
+// to {op:"const",value:0} and execute as $0 with no trace.
+function normalizeExpr(raw: unknown, warnings: string[], path: string, depth = 0): Expr {
+  const fallback = (reason: string): Expr => {
+    warnings.push(`${path}: ${reason}; defaulting to {op:const,value:0}`);
     return { op: "const", value: 0 };
+  };
+
+  if (!raw || typeof raw !== "object") {
+    return fallback("missing or non-object Expr");
+  }
+  if (depth > 4) {
+    return fallback("Expr nesting exceeds max depth (4)");
   }
   const candidate = raw as Record<string, unknown>;
   const op = candidate.op;
@@ -811,15 +825,15 @@ function normalizeExpr(raw: unknown, depth = 0): Expr {
     op !== "max" &&
     op !== "min"
   ) {
-    return { op: "const", value: 0 };
+    return fallback(`unknown Expr op ${JSON.stringify(op)}`);
   }
 
   if (op === "const") {
     const value = candidate.value;
-    return {
-      op: "const",
-      value: typeof value === "number" && Number.isFinite(value) ? value : 0,
-    };
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return fallback(`const Expr missing numeric value (got ${JSON.stringify(value)})`);
+    }
+    return { op: "const", value };
   }
   if (op === "var") {
     return {
@@ -829,7 +843,9 @@ function normalizeExpr(raw: unknown, depth = 0): Expr {
   }
 
   const args = Array.isArray(candidate.args)
-    ? candidate.args.map((item) => normalizeExpr(item, depth + 1))
+    ? candidate.args.map((item, i) =>
+        normalizeExpr(item, warnings, `${path}.args[${i}]`, depth + 1),
+      )
     : [];
   return {
     op,
@@ -906,7 +922,11 @@ const ACCUMULATION_UNITS: AccumulationUnit[] = [
   "unit",
 ];
 
-function normalizeEffect(rawClause: Record<string, unknown>): Effect {
+function normalizeEffect(
+  rawClause: Record<string, unknown>,
+  warnings: string[],
+  clauseId: string,
+): Effect {
   const rawEffect = rawClause.effect;
   if (!rawEffect || typeof rawEffect !== "object") {
     // Legacy or malformed clauses fall through to unmodeled.
@@ -914,16 +934,19 @@ function normalizeEffect(rawClause: Record<string, unknown>): Effect {
   }
   const candidate = rawEffect as Record<string, unknown>;
   const kind = candidate.kind;
+  const path = `${clauseId}.effect`;
 
   if (kind === "payment") {
     const assetKind = typeof candidate.assetKind === "string" ? candidate.assetKind : undefined;
     const cap =
-      candidate.cap && typeof candidate.cap === "object" ? normalizeExpr(candidate.cap) : undefined;
+      candidate.cap && typeof candidate.cap === "object"
+        ? normalizeExpr(candidate.cap, warnings, `${path}.cap`)
+        : undefined;
     return {
       kind: "payment",
       payer: String(candidate.payer || "party"),
       payee: String(candidate.payee || "counterparty"),
-      amount: normalizeExpr(candidate.amount),
+      amount: normalizeExpr(candidate.amount, warnings, `${path}.amount`),
       ...(cap ? { cap } : {}),
       ...(assetKind ? { assetKind } : {}),
     };
@@ -949,11 +972,13 @@ function normalizeEffect(rawClause: Record<string, unknown>): Effect {
 
   if (kind === "formula") {
     const cap =
-      candidate.cap && typeof candidate.cap === "object" ? normalizeExpr(candidate.cap) : undefined;
+      candidate.cap && typeof candidate.cap === "object"
+        ? normalizeExpr(candidate.cap, warnings, `${path}.cap`)
+        : undefined;
     return {
       kind: "formula",
       outputVar: String(candidate.outputVar || "derived_value"),
-      expr: normalizeExpr(candidate.expr),
+      expr: normalizeExpr(candidate.expr, warnings, `${path}.expr`),
       ...(cap ? { cap } : {}),
     };
   }
@@ -963,11 +988,13 @@ function normalizeEffect(rawClause: Record<string, unknown>): Effect {
       ? (candidate.per as AccumulationUnit)
       : "day";
     const cap =
-      candidate.cap && typeof candidate.cap === "object" ? normalizeExpr(candidate.cap) : undefined;
+      candidate.cap && typeof candidate.cap === "object"
+        ? normalizeExpr(candidate.cap, warnings, `${path}.cap`)
+        : undefined;
     return {
       kind: "accumulation",
       per,
-      rate: normalizeExpr(candidate.rate),
+      rate: normalizeExpr(candidate.rate, warnings, `${path}.rate`),
       ...(cap ? { cap } : {}),
     };
   }
@@ -996,28 +1023,30 @@ function normalizeEffect(rawClause: Record<string, unknown>): Effect {
   return { kind: "unmodeled" };
 }
 
-function normalizeClause(rawClause: Record<string, unknown>): Clause {
+function normalizeClause(rawClause: Record<string, unknown>, warnings: string[]): Clause {
   const sourceSpan = normalizeSourceSpan(rawClause.sourceSpan);
   const condition = normalizeBoolExpr(rawClause.condition);
   const semanticTag =
     typeof rawClause.semanticTag === "string" && rawClause.semanticTag
       ? rawClause.semanticTag
       : "unmodeled_section";
+  const clauseId = String(rawClause.id);
   return {
-    id: String(rawClause.id),
+    id: clauseId,
     title: String(rawClause.title),
     sourceText: String(rawClause.sourceText),
     ...(sourceSpan ? { sourceSpan } : {}),
     modeled: Boolean(rawClause.modeled),
     semanticTag,
     ...(condition ? { condition } : {}),
-    effect: normalizeEffect(rawClause),
+    effect: normalizeEffect(rawClause, warnings, clauseId),
   };
 }
 
 function normalizeIr(raw: unknown, sourceFile: string, contractText: string): ContractIR {
   const parsed = IrTopSchema.parse(raw);
-  const clauses = parsed.clauses.map(normalizeClause);
+  const warnings: string[] = [];
+  const clauses = parsed.clauses.map((c) => normalizeClause(c, warnings));
   const clausesWithSpans = attachSourceSpans(contractText, clauses);
 
   return {
@@ -1028,7 +1057,7 @@ function normalizeIr(raw: unknown, sourceFile: string, contractText: string): Co
     definitions: parsed.definitions,
     clauses: clausesWithSpans,
     ...(parsed.jurisdiction ? { jurisdiction: parsed.jurisdiction } : {}),
-    metadata: buildMetadata(contractText, sourceFile, clausesWithSpans, "llm"),
+    metadata: buildMetadata(contractText, sourceFile, clausesWithSpans, "llm", warnings),
   };
 }
 
@@ -1043,6 +1072,20 @@ export async function extractIr(options: ExtractIrOptions): Promise<ContractIR> 
     "- Allowed `effect.kind` values: payment, obligation, formula, accumulation, indemnification, default, unmodeled.",
     "- If a clause is not deterministically executable, set `modeled: false` and `effect: { \"kind\": \"unmodeled\" }`.",
     "- Keep `semanticTag` specific and domain-meaningful (open vocabulary).",
+    "Numeric fields (Expr grammar):",
+    "- `effect.amount`, `effect.cap`, `effect.rate`, and `effect.expr` carry an Expr tree — NEVER a bare number, NEVER an object like {value: 25000} without an `op`.",
+    "- Expr nodes: {op:\"const\", value:<number>} | {op:\"var\", name:<string>} | {op:<\"add\"|\"sub\"|\"mul\"|\"div\"|\"max\"|\"min\">, args:[Expr, Expr]}.",
+    "- Always parse literal dollar amounts, percentages, and per-unit rates from the source text into `const` Exprs. If the contract states $25,000, emit {op:\"const\", value:25000} — never {op:\"const\", value:0}.",
+    "- For percentages, convert to a decimal fraction: \"3%\" → {op:\"const\", value:0.03}.",
+    "Worked examples:",
+    "- \"Buyer shall pay $25,000 at closing\" →",
+    "  effect: {kind:\"payment\", payer:\"party-buyer\", payee:\"party-seller\", amount:{op:\"const\", value:25000}}.",
+    "- \"A late fee of $1,000 per day, capped at $30,000\" →",
+    "  effect: {kind:\"accumulation\", per:\"day\", rate:{op:\"const\", value:1000}, cap:{op:\"const\", value:30000}}.",
+    "- \"Interest of 3% of the unpaid balance\" →",
+    "  effect: {kind:\"formula\", outputVar:\"interest_due\", expr:{op:\"mul\", args:[{op:\"const\", value:0.03}, {op:\"var\", name:\"unpaid_balance\"}]}}.",
+    "- \"The total purchase price is $500,000\" (definitional — carry the number as a const formula so it is non-zero) →",
+    "  effect: {kind:\"formula\", outputVar:\"purchase_price\", expr:{op:\"const\", value:500000}}.",
   ].join("\n");
 
   const userPrompt = `Source file: ${options.sourceFile}\n\nContract markdown:\n${options.contractText}`;

@@ -1,6 +1,6 @@
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export function parseIsoDate(date: string): Date {
+function parseIsoDate(date: string): Date {
   const parsed = new Date(`${date}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) {
     throw new Error(`Invalid ISO date: ${date}`);
@@ -8,7 +8,7 @@ export function parseIsoDate(date: string): Date {
   return parsed;
 }
 
-export function formatIsoDate(date: Date): string {
+function formatIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "src/main.ts",
+        "scripts/check-expectations.ts",
+        "tests/**/*.test.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "scripts/**/*.ts",
+        "tests/**/*.ts"
+      ]
+    },
+    "web": {
+      "entry": [
+        "app/**/{page,layout,route,template,loading,error,not-found,default,global-error}.{ts,tsx}",
+        "next.config.ts"
+      ],
+      "project": [
+        "app/**/*.{ts,tsx}",
+        "next.config.ts"
+      ]
+    }
+  }
+}

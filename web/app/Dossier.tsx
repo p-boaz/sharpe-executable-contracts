@@ -653,7 +653,7 @@ export default function Dossier({
                     <div className="run-id">{s.archetype}</div>
                     <div className="title">{s.label}</div>
                     <div className="events">
-                      <span>{s.scenarioId}</span>
+                      <span>{s.summary ?? s.scenarioId}</span>
                     </div>
                     <div className="foot">
                       <span className="bal">

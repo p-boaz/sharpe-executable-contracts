@@ -141,5 +141,10 @@ export interface ContractIR {
       llmUsed: boolean;
       mode: "llm";
     };
+    // Populated when the normalizer had to replace malformed Expr nodes with
+    // {op:"const",value:0}. Surfaces silent zero-coercions (e.g. LLM emitted
+    // a bare number for `effect.amount`) so downstream UI and reviewers can
+    // see which clauses lost numeric fidelity instead of executing to $0.
+    extractionWarnings?: string[];
   };
 }
