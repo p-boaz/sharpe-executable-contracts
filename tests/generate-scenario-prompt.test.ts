@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   SCENARIO_SYSTEM_PROMPT,
   buildScenarioUserPrompt,
+  scenarioRequirements,
 } from "../src/pipeline/generate-scenario.js";
 import type { ContractIR } from "../src/types/ir.js";
 
@@ -119,4 +120,19 @@ test("user prompt includes the repair section on retry", () => {
   });
   assert.match(prompt, /Previous candidate failed validation:/);
   assert.match(prompt, /Return a corrected scenario/);
+});
+
+test("scenarioRequirements for generic baseline requires metadata.clauseId binding", () => {
+  const rules = scenarioRequirements(
+    { id: "baseline", label: "Baseline review", intent: "" },
+    "generic",
+  );
+  assert.ok(
+    rules.some((r) => /metadata\.clauseId/.test(r)),
+    `expected a rule mentioning metadata.clauseId, got: ${JSON.stringify(rules)}`,
+  );
+  assert.ok(
+    rules.some((r) => /obligation/.test(r)),
+    `expected a rule referencing obligations, got: ${JSON.stringify(rules)}`,
+  );
 });

@@ -251,7 +251,7 @@ export function buildScenarioUserPrompt(inputs: ScenarioPromptInputs): string {
   ].join("\n");
 }
 
-function scenarioRequirements(archetype: Archetype, family: ContractFamily): string[] {
+export function scenarioRequirements(archetype: Archetype, family: ContractFamily): string[] {
   if (family === "credit_card" && archetype.id === "late-payment") {
     return [
       "initialState.dueDate must be a YYYY-MM-DD string.",
@@ -286,6 +286,13 @@ function scenarioRequirements(archetype: Archetype, family: ContractFamily): str
       "initialState.rentDueDate must be a YYYY-MM-DD string.",
       "Payment total must be at least initialState.monthlyRent with no payment after rentDueDate.",
       "Include a due_check event.",
+    ];
+  }
+  if (archetype.id === "baseline") {
+    return [
+      "Include at least one event that performs a modeled obligation clause (set metadata.clauseId to the obligation's clause id exactly as listed in the binding guidance below).",
+      "If no obligations are modeled, include at least one event that fires a modeled formula, payment, or accumulation clause.",
+      "Keep the timeline minimal: prefer 1–5 events, each with a real YYYY-MM-DD date.",
     ];
   }
   return [
