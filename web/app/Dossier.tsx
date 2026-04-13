@@ -527,40 +527,40 @@ export default function Dossier({
             </div>
             <pre className="body">{contract || "(contract.md not found)"}</pre>
           </div>
-        </div>
 
-        <details className="ir-drawer">
-          <summary>
-            <strong>Show intermediate representation</strong>
-            {" — "}
-            {(ir?.clauses ?? []).length} clauses drive every scenario below
-          </summary>
-          <div className="ir-body">
-            {(ir?.clauses ?? []).map((c) => (
-              <div
-                key={c.id}
-                className={`article ${linkClass(c.id)}`}
-                {...linkHandlers(c.id)}
-              >
-                <div className="art-head">
-                  <span className={`art-kind ${c.effect?.kind ?? "unmodeled"}`}>
-                    {c.effect?.kind ?? "unmodeled"}
-                  </span>
-                  <span className="art-id">{c.id}</span>
+          <details className="ir-drawer" style={{ marginTop: 0 }}>
+            <summary>
+              <strong>Show intermediate representation</strong>
+              {" — "}
+              {(ir?.clauses ?? []).length} clauses drive every scenario below
+            </summary>
+            <div className="ir-body">
+              {(ir?.clauses ?? []).map((c) => (
+                <div
+                  key={c.id}
+                  className={`article ${linkClass(c.id)}`}
+                  {...linkHandlers(c.id)}
+                >
+                  <div className="art-head">
+                    <span className={`art-kind ${c.effect?.kind ?? "unmodeled"}`}>
+                      {c.effect?.kind ?? "unmodeled"}
+                    </span>
+                    <span className="art-id">{c.id}</span>
+                  </div>
+                  <div className="art-title">{c.title ?? c.id}</div>
+                  <div className="art-body">
+                    <ClauseBody c={c} />
+                  </div>
                 </div>
-                <div className="art-title">{c.title ?? c.id}</div>
-                <div className="art-body">
-                  <ClauseBody c={c} />
+              ))}
+              {(ir?.clauses ?? []).length === 0 ? (
+                <div className="muted italic" style={{ padding: 12 }}>
+                  (IR unavailable until "Generate IR" runs for this contract)
                 </div>
-              </div>
-            ))}
-            {(ir?.clauses ?? []).length === 0 ? (
-              <div className="muted italic" style={{ padding: 12 }}>
-                (IR unavailable until "Generate IR" runs for this contract)
-              </div>
-            ) : null}
-          </div>
-        </details>
+              ) : null}
+            </div>
+          </details>
+        </div>
       </section>
 
       <section className="zone">

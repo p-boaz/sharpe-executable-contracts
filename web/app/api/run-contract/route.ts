@@ -76,10 +76,9 @@ const GENERATE_IR_SCRIPT = [
   "const hash = (value) => createHash('sha256').update(value).digest('hex');",
   "",
   "(async () => {",
-  "  const [contractPath, outDir, sourceFile, contractKey, useLlmRaw] = process.argv.slice(-5);",
-  "  const useLlm = useLlmRaw === 'true';",
+  "  const [contractPath, outDir, sourceFile, contractKey] = process.argv.slice(-4);",
   "  const contractText = await readTextFile(contractPath);",
-  "  const ir = await extractIr({ contractText, contractPath, useLlm });",
+  "  const ir = await extractIr({ contractText, sourceFile });",
   "  const generatedAt = new Date().toISOString();",
   "  const meta = {",
   "    contractId: contractKey,",
@@ -105,14 +104,13 @@ const GENERATE_SCENARIOS_SCRIPT = [
   'import { generateAllScenarios } from "./src/pipeline/generate-scenario.ts";',
   "",
   "(async () => {",
-  "  const [contractPath, outDir, sourceFile, contractKey, useLlmRaw] = process.argv.slice(-5);",
-  "  const useLlm = useLlmRaw === 'true';",
+  "  const [contractPath, outDir, sourceFile, contractKey] = process.argv.slice(-4);",
   "  const [contractText, irRaw] = await Promise.all([",
   "    readTextFile(contractPath),",
   "    readTextFile(resolve(outDir, 'ir.json')),",
   "  ]);",
   "  const ir = JSON.parse(irRaw);",
-  "  const { family, scenarios } = await generateAllScenarios({ ir, contractText, useLlm });",
+  "  const { family, scenarios } = await generateAllScenarios({ ir, contractText });",
   "",
   "  let existingMeta = {};",
   "  try {",
@@ -190,7 +188,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const useLlm = true;
     const contractPath = path.join(CONTRACTS_DIR, sourceFile);
     const outDir = path.join(WEB_RUNS_DIR, contractKey);
 
@@ -208,7 +205,6 @@ export async function POST(request: Request) {
           outDir,
           sourceFile,
           contractKey,
-          String(useLlm),
         ],
         { cwd: REPO_ROOT, maxBuffer: 20 * 1024 * 1024 },
       );
@@ -246,7 +242,6 @@ export async function POST(request: Request) {
         outDir,
         sourceFile,
         contractKey,
-        String(useLlm),
       ],
       { cwd: REPO_ROOT, maxBuffer: 20 * 1024 * 1024 },
     );

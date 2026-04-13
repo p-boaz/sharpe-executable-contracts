@@ -39,9 +39,15 @@ export function eventTypesForVerb(verb: string): ScenarioEventType[] {
 }
 
 // Absolute day difference. `daysBetween` throws on reverse order, so we
-// always pass the earlier date first.
-function absDays(aDate: string, bDate: string): number {
-  return aDate <= bDate ? daysBetween(aDate, bDate) : daysBetween(bDate, aDate);
+// always pass the earlier date first. Returns null if either date is not a
+// parseable ISO date (e.g. the symbolic "see_source_text" placeholder that
+// leaks through from the IR when a temporal rule is under-specified).
+function absDays(aDate: string, bDate: string): number | null {
+  try {
+    return aDate <= bDate ? daysBetween(aDate, bDate) : daysBetween(bDate, aDate);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -66,17 +72,25 @@ export function matchEventToObligation(
   resolvedDueDate: string,
   windowDays: number = 7,
 ): MatchResult {
-  // TODO(T22): implement the hybrid rule per the JSDoc above.
-  //
-  // Hints:
-  //   - Read event.metadata?.clauseId (it's `unknown`; narrow with typeof ... === "string").
-  //   - obligationVerb(obligation.action) gives you the verb; eventTypesForVerb(verb) gives
-  //     the allowed event types.
-  //   - absDays(event.date, resolvedDueDate) ≤ windowDays gates the fallback.
-  //   - Return exactly one of the three shapes in the rule. Do not mix reasons.
-  void event;
-  void obligation;
-  void resolvedDueDate;
-  void windowDays;
-  return { matched: false, reason: "no-match" };
+  const explicitClauseId = event.metadata?.clauseId;
+  if (typeof explicitClauseId === "string" && explicitClauseId === obligation.id) {
+    return { matched: true, reason: "clauseId" };
+  }
+
+  const actor = event.metadata?.actor;
+  if (typeof actor !== "string" || actor !== obligation.actor) {
+    return { matched: false, reason: "no-match" };
+  }
+
+  const allowedTypes = eventTypesForVerb(obligationVerb(obligation.action));
+  if (!allowedTypes.includes(event.type)) {
+    return { matched: false, reason: "no-match" };
+  }
+
+  const distance = absDays(event.date, resolvedDueDate);
+  if (distance === null || distance > windowDays) {
+    return { matched: false, reason: "no-match" };
+  }
+
+  return { matched: true, reason: "actor+verb+window" };
 }
