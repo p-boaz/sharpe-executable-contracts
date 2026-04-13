@@ -242,7 +242,9 @@ Replace the baseline branch in `src/pipeline/archetype-check.ts:126-136` with:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec tsx --test tests/archetype-check.test.ts`
-Expected: all tests pass. Also run the generic-executor test to make sure it still passes:
+Expected: the 3 new baseline tests pass. The 5 pre-existing AND-form failures (`credit-card deterministic fallbacks pass AND-form validation`, `lease deterministic fallbacks pass AND-form validation`, `late-payment AND-form rejects...`, `over-limit AND-form rejects...`, `baseline AND-form rejects...`) remain failing — they are unrelated to this plan and were failing before any changes. If a subagent sees them, do NOT try to fix them here.
+
+Also run the generic-executor test to make sure it still passes:
 Run: `pnpm exec tsx --test tests/generic-executor.test.ts`
 Expected: all 8 tests pass (the existing procurement-shaped IR test has one met obligation, so the tightened validator is satisfied when that scenario is validated as baseline).
 
@@ -766,7 +768,11 @@ Expected: 2/2 pass.
 - [ ] **Step 3: Run the full suite to catch regressions**
 
 Run: `pnpm test`
-Expected: the 11 tests that pass today continue to pass, plus the new tests from Tasks 1–5. Pre-existing unrelated failures (AND-form validators, `--no-llm` deprecated usage, decompiler determinism) remain — do not try to fix them in this plan.
+Expected: **no new failures**. The 11 tests passing today continue to pass, plus the new tests from Tasks 1–5 pass. The 10 pre-existing failures (AND-form validators, `--no-llm` deprecated usage, decompiler determinism, run/determinism CLI, extractor heuristic) remain failing exactly as before — do not try to fix them in this plan.
+
+Baseline counts to compare against:
+- Before this plan: 11 pass / 10 fail (total 21).
+- After Tasks 1–5: expected **~18 pass / 10 fail** (total 28) — three new tests in Task 1, four in Task 2, one in Task 3, two in Task 5.
 
 - [ ] **Step 4: Commit**
 
