@@ -85,6 +85,18 @@ const scenarioJsonSchema: Record<string, unknown> = {
           metadata: {
             type: "object",
             additionalProperties: true,
+            properties: {
+              clauseId: {
+                type: "string",
+                description:
+                  "Exact id of the IR obligation clause performed by this event. Required on events that perform a modeled obligation; the executor matches on this field as its primary rule.",
+              },
+              actor: {
+                type: "string",
+                description:
+                  "Optional actor id (e.g. 'party.seller') used by the executor's fallback matcher when clauseId is absent.",
+              },
+            },
           },
         },
       },
