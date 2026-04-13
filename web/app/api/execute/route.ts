@@ -4,11 +4,12 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 
-const OUT_DIR = path.resolve(process.cwd(), "..", "out");
+const WEB_RUNS_DIR = path.resolve(process.cwd(), "..", "out", "_web_runs");
 const REPO_ROOT = path.resolve(process.cwd(), "..");
 const execFileAsync = promisify(execFile);
 
 interface ExecuteRequest {
+  contractKey?: string;
   contractId?: string;
   archetype?: string;
 }
@@ -18,7 +19,9 @@ function isSafeSegment(value: string): boolean {
 }
 
 const EXECUTE_SCRIPT = [
+  'import { createHash } from "node:crypto";',
   'import { readFile } from "node:fs/promises";',
+  'import { decompileExecutionToEnglish } from "./src/core/decompiler.ts";',
   'import { executeContract } from "./src/core/executor.ts";',
   "(async () => {",
   "  const [irPath, scenarioPath] = process.argv.slice(-2);",
@@ -30,7 +33,10 @@ const EXECUTE_SCRIPT = [
   "  const ir = JSON.parse(irRaw);",
   "  const scenario = JSON.parse(scenarioRaw);",
   "  const execution = executeContract(ir, scenario);",
-  "  process.stdout.write(JSON.stringify(execution));",
+  "  const archetype = scenario.archetype || scenario.scenarioId || 'selected';",
+  "  const english = decompileExecutionToEnglish(ir, [{ archetype, scenario, execution }]);",
+  "  const englishHash = createHash('sha256').update(english).digest('hex');",
+  "  process.stdout.write(JSON.stringify({ execution, english, englishHash }));",
   "})();",
 ].join("\n");
 
@@ -44,26 +50,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const contractId = body.contractId?.trim();
+  const contractKey = body.contractKey?.trim() ?? body.contractId?.trim();
   const archetype = body.archetype?.trim();
 
-  if (!contractId || !archetype) {
+  if (!contractKey || !archetype) {
     return NextResponse.json(
-      { error: "contractId and archetype are required" },
+      { error: "contractKey and archetype are required" },
       { status: 400 },
     );
   }
-  if (!isSafeSegment(contractId) || !isSafeSegment(archetype)) {
+  if (!isSafeSegment(contractKey) || !isSafeSegment(archetype)) {
     return NextResponse.json(
-      { error: "Invalid contractId or archetype" },
+      { error: "Invalid contractKey or archetype" },
       { status: 400 },
     );
   }
 
   try {
-    const base = path.join(OUT_DIR, contractId);
+    const base = path.join(WEB_RUNS_DIR, contractKey);
     const irPath = path.join(base, "ir.json");
     const scenarioPath = path.join(base, "scenarios", `${archetype}.json`);
+    const executionPath = path.join(base, "executions", `${archetype}.json`);
+    const englishPath = path.join(base, "english.txt");
+    const metaPath = path.join(base, "meta.json");
 
     await Promise.all([fs.access(irPath), fs.access(scenarioPath)]);
 
@@ -78,13 +87,64 @@ export async function POST(request: Request) {
     if (stderr && stderr.trim()) {
       throw new Error(stderr.trim());
     }
-    const execution = JSON.parse(stdout);
+    const payload = JSON.parse(stdout) as {
+      execution?: unknown;
+      english?: string;
+      englishHash?: string;
+    };
+    if (!payload.execution || typeof payload.english !== "string" || !payload.englishHash) {
+      throw new Error("Execution completed but response could not be parsed");
+    }
+    const execution = payload.execution as any;
+
+    await fs.mkdir(base, { recursive: true });
+    await fs.mkdir(path.dirname(executionPath), { recursive: true });
+    await Promise.all([
+      fs.writeFile(executionPath, `${JSON.stringify(execution, null, 2)}\n`, "utf8"),
+      fs.writeFile(englishPath, payload.english, "utf8"),
+    ]);
+
+    try {
+      const executedAt = new Date().toISOString();
+      const raw = await fs.readFile(metaPath, "utf8");
+      const meta = JSON.parse(raw) as {
+        englishHash?: string;
+        scenarios?: Array<{
+          archetype?: string;
+          endingBalance?: number;
+          breached?: boolean;
+          breachCount?: number;
+        }>;
+        stages?: Record<string, string>;
+      };
+      if (Array.isArray(meta.scenarios)) {
+        meta.scenarios = meta.scenarios.map((entry) => {
+          if (entry.archetype !== archetype) return entry;
+          return {
+            ...entry,
+            endingBalance: execution?.summary?.endingBalance,
+            breached: execution?.summary?.breached,
+            breachCount: Array.isArray(execution?.breaches) ? execution.breaches.length : 0,
+          };
+        });
+      }
+      meta.stages = {
+        ...(meta.stages ?? {}),
+        lastExecutedAt: executedAt,
+        englishGeneratedAt: executedAt,
+      };
+      meta.englishHash = payload.englishHash;
+      await fs.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+    } catch {
+      // meta.json is optional for execution API
+    }
+
     return NextResponse.json({ execution });
   } catch (error) {
     const message =
       error instanceof Error
         ? error.message
-        : `Could not execute contract '${contractId}' for scenario '${archetype}'`;
+        : `Could not execute contract '${contractKey}' for scenario '${archetype}'`;
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

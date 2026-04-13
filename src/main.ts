@@ -1,25 +1,18 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
+import { decompileExecutionToEnglish } from "./core/decompiler.js";
 import { ensureDir, writeJson, writeText } from "./io/fs.js";
 import { runPipeline, type ScenarioRun } from "./pipeline/run-pipeline.js";
 import type { ContractIR } from "./types/ir.js";
 import type { Scenario } from "./types/scenario.js";
 import { stableStringify } from "./util/json.js";
 
-type LlmModeReason =
-  | "on (OPENAI_API_KEY detected)"
-  | "on (--use-llm)"
-  | "off (--no-llm)"
-  | "off (no OPENAI_API_KEY)";
-
 interface CliOptions {
   command: "run" | "determinism" | "help";
   contractPath: string;
   outDir?: string;
   outRoot: string;
-  useLlm: boolean;
-  llmModeReason: LlmModeReason;
 }
 
 interface StageLlmStatus {
@@ -69,7 +62,14 @@ function loadDotEnvFromCwd(): void {
   }
 }
 
-function scenarioStageStatus(scenario: Scenario, useLlm: boolean): StageLlmStatus {
+function ensureOpenAiKey(): void {
+  if (process.env.OPENAI_API_KEY) return;
+  throw new Error(
+    "OPENAI_API_KEY is required. This repo now runs in LLM-required mode only.",
+  );
+}
+
+function scenarioStageStatus(scenario: Scenario): StageLlmStatus {
   const fromScenario = scenario.metadata?.generation;
   if (fromScenario) {
     return {
@@ -78,8 +78,7 @@ function scenarioStageStatus(scenario: Scenario, useLlm: boolean): StageLlmStatu
       mode: fromScenario.mode,
     };
   }
-  if (useLlm) return { llmRequested: true, llmUsed: true, mode: "llm" };
-  return { llmRequested: false, llmUsed: false, mode: "deterministic_fallback" };
+  return { llmRequested: true, llmUsed: true, mode: "llm" };
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -87,8 +86,6 @@ function parseArgs(argv: string[]): CliOptions {
   let contractPath = "contracts/WesTex-VISA-credit-card-agreement.md";
   let outRoot = "out";
   let outDir: string | undefined;
-  let explicitUseLlm = false;
-  let explicitNoLlm = false;
 
   for (let i = 1; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -108,34 +105,15 @@ function parseArgs(argv: string[]): CliOptions {
       i += 1;
       continue;
     }
-    if (arg === "--use-llm") {
-      explicitUseLlm = true;
-      continue;
+    if (arg === "--use-llm" || arg === "--no-llm") {
+      throw new Error(`${arg} is no longer supported. LLM mode is always on.`);
     }
-    if (arg === "--no-llm") {
-      explicitNoLlm = true;
-      continue;
+    if (arg?.startsWith("-")) {
+      throw new Error(`Unknown argument: ${arg}`);
     }
   }
 
-  const hasKey = Boolean(process.env.OPENAI_API_KEY);
-  let useLlm: boolean;
-  let llmModeReason: LlmModeReason;
-  if (explicitNoLlm) {
-    useLlm = false;
-    llmModeReason = "off (--no-llm)";
-  } else if (explicitUseLlm) {
-    useLlm = true;
-    llmModeReason = "on (--use-llm)";
-  } else if (hasKey) {
-    useLlm = true;
-    llmModeReason = "on (OPENAI_API_KEY detected)";
-  } else {
-    useLlm = false;
-    llmModeReason = "off (no OPENAI_API_KEY)";
-  }
-
-  const base = { contractPath, outRoot, useLlm, llmModeReason };
+  const base = { contractPath, outRoot };
   const withOut = outDir === undefined ? base : { ...base, outDir };
   if (command !== "run" && command !== "determinism") {
     return { ...withOut, command: "help" };
@@ -147,8 +125,8 @@ function printHelp(): void {
   process.stdout.write(
     [
       "Usage:",
-      "  pnpm run run --contract <path> [--out-root <dir>] [--out <dir>] [--use-llm | --no-llm]",
-      "  pnpm run determinism --contract <path> [--out-root <dir>] [--out <dir>] [--use-llm | --no-llm]",
+      "  pnpm run run --contract <path> [--out-root <dir>] [--out <dir>]",
+      "  pnpm run determinism --contract <path> [--out-root <dir>] [--out <dir>]",
       "",
       "Layout:",
       "  Default writes to <out-root>/<contractId>/ with ir.json, english.txt,",
@@ -156,7 +134,7 @@ function printHelp(): void {
       "  --out <dir> overrides the per-contract folder (legacy flat layout).",
       "",
       "LLM mode:",
-      "  defaults on when OPENAI_API_KEY is set; --no-llm forces fallback.",
+      "  OPENAI_API_KEY is required. Non-LLM mode has been removed.",
       "  .env in repo root is auto-loaded before arg parsing.",
       "",
       "Defaults:",
@@ -166,11 +144,6 @@ function printHelp(): void {
   );
   process.stdout.write("\n");
 }
-
-const HEURISTIC_FALLBACK_BANNER =
-  "Note: running without --use-llm. Heuristic fallback models credit-card and lease\n" +
-  "shapes only; other contract families will degrade to honest [UNMODELED] clauses.\n" +
-  "Set OPENAI_API_KEY and re-run for full extraction.\n";
 
 async function writeContractBundle(
   contractDir: string,
@@ -199,9 +172,7 @@ async function writeContractBundle(
 
 async function runCommand(options: CliOptions): Promise<void> {
   const contractPath = resolve(process.cwd(), options.contractPath);
-  if (!options.useLlm) process.stderr.write(HEURISTIC_FALLBACK_BANNER);
-
-  const result = await runPipeline({ contractPath, useLlm: options.useLlm });
+  const result = await runPipeline({ contractPath });
   const extractionStage = result.ir.metadata.extraction;
   const contractId = contractIdFor(result.ir, contractPath);
 
@@ -211,7 +182,7 @@ async function runCommand(options: CliOptions): Promise<void> {
 
   const scenarioStages = result.runs.map((run) => ({
     archetype: run.archetype,
-    status: scenarioStageStatus(run.scenario, options.useLlm),
+    status: scenarioStageStatus(run.scenario),
   }));
 
   const irHash = hashText(stableStringify(result.ir));
@@ -226,8 +197,8 @@ async function runCommand(options: CliOptions): Promise<void> {
     englishHash,
     generatedAt: new Date().toISOString(),
     llmMode: {
-      requestedByCli: options.useLlm,
-      reason: options.llmModeReason,
+      required: true,
+      reason: "on (required)",
     },
     stages: {
       extractIr: extractionStage,
@@ -253,12 +224,12 @@ async function runCommand(options: CliOptions): Promise<void> {
   );
 
   const summaryLines = [
-    `Command: run`,
+    "Command: run",
     `Contract: ${options.contractPath}`,
     `ContractId: ${contractId}`,
     `Output: ${contractDir}`,
     `Family: ${result.family}`,
-    `LLM mode: ${options.llmModeReason}`,
+    "LLM mode: on (required)",
     `IR extraction stage: ${extractionStage.mode} (llmUsed=${extractionStage.llmUsed})`,
     `Scenarios (${result.runs.length}):`,
     ...result.runs.map((run) => {
@@ -284,10 +255,9 @@ function serializeRuns(runs: ScenarioRun[]): string {
 
 async function runDeterminismCommand(options: CliOptions): Promise<void> {
   const contractPath = resolve(process.cwd(), options.contractPath);
-  if (!options.useLlm) process.stderr.write(HEURISTIC_FALLBACK_BANNER);
 
-  const resultA = await runPipeline({ contractPath, useLlm: options.useLlm });
-  const resultB = await runPipeline({ contractPath, useLlm: options.useLlm });
+  const resultA = await runPipeline({ contractPath });
+  const resultB = await runPipeline({ contractPath });
 
   const contractId = contractIdFor(resultA.ir, contractPath);
   const determinismDir = options.outDir
@@ -304,18 +274,12 @@ async function runDeterminismCommand(options: CliOptions): Promise<void> {
   const runsB = serializeRuns(resultB.runs);
   const englishA = resultA.english;
   const englishB = resultB.english;
+  const englishAReplay = decompileExecutionToEnglish(resultA.ir, resultA.runs);
+  const englishBReplay = decompileExecutionToEnglish(resultB.ir, resultB.runs);
 
-  const irEqual = irA === irB;
-  const runsEqual = runsA === runsB;
-  const englishStable = englishA === englishB;
-
-  const llmMode = options.useLlm;
-  const irStable: boolean | null = llmMode ? null : irEqual;
-  const scenarioStable: boolean | null = llmMode ? null : runsEqual;
-  const executionStable: boolean | null = llmMode ? null : runsEqual;
-  const comparedArtifacts = llmMode
-    ? ["english"]
-    : ["ir", "scenario", "execution", "english"];
+  const englishCrossRunStable = englishA === englishB;
+  const englishDecompilerStable = englishA === englishAReplay && englishB === englishBReplay;
+  const englishStable = englishDecompilerStable;
 
   await writeText(resolve(determinismDir, "ir-a.json"), `${irA}\n`);
   await writeText(resolve(determinismDir, "ir-b.json"), `${irB}\n`);
@@ -326,12 +290,14 @@ async function runDeterminismCommand(options: CliOptions): Promise<void> {
 
   const determinismArtifact: Record<string, unknown> = {
     contractId,
-    comparedArtifacts,
-    llmMode,
-    irStable,
-    scenarioStable,
-    executionStable,
+    comparedArtifacts: ["english_decompiler"],
+    llmMode: true,
+    irStable: null,
+    scenarioStable: null,
+    executionStable: null,
     englishStable,
+    englishCrossRunStable,
+    englishDecompilerStable,
     irHashA: hashText(irA),
     irHashB: hashText(irB),
     runsHashA: hashText(runsA),
@@ -342,28 +308,24 @@ async function runDeterminismCommand(options: CliOptions): Promise<void> {
     stages: {
       extractIr: { runA: extractionStageA, runB: extractionStageB },
     },
+    notes:
+      "IR, scenarios, executions, and cross-run english output may vary in LLM-required mode. Determinism guarantee is executable-state -> english decompilation purity for each run.",
   };
-  if (llmMode) {
-    determinismArtifact.notes =
-      "IR, scenarios, and executions may vary across runs under --use-llm. The executable-to-English leg is the determinism guarantee.";
-  }
   await writeJson(resolve(determinismDir, "determinism.json"), determinismArtifact);
-
-  const format = (v: boolean | null): string =>
-    v === null ? "n/a (LLM mode)" : String(v);
 
   process.stdout.write(
     [
-      `Command: determinism`,
+      "Command: determinism",
       `Contract: ${options.contractPath}`,
       `ContractId: ${contractId}`,
       `Output: ${determinismDir}`,
-      `LLM mode: ${options.llmModeReason}`,
+      "LLM mode: on (required)",
       `IR extraction stage: ${extractionStageA.mode} (llmUsed=${extractionStageA.llmUsed})`,
-      `IR stable: ${format(irStable)}`,
-      `Scenario stable: ${format(scenarioStable)}`,
-      `Execution stable: ${format(executionStable)}`,
+      "IR stable: n/a (LLM-required mode)",
+      "Scenario stable: n/a (LLM-required mode)",
+      "Execution stable: n/a (LLM-required mode)",
       `English stable: ${englishStable}`,
+      "English cross-run stable: n/a (LLM-required mode)",
     ].join("\n"),
   );
   process.stdout.write("\n");
@@ -373,6 +335,7 @@ async function main(): Promise<void> {
   loadDotEnvFromCwd();
   const options = parseArgs(process.argv.slice(2));
   if (options.command === "help") return printHelp();
+  ensureOpenAiKey();
   if (options.command === "run") return runCommand(options);
   return runDeterminismCommand(options);
 }

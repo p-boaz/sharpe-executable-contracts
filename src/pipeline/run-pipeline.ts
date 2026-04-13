@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { decompileIrToEnglish } from "../core/decompiler.js";
+import { decompileExecutionToEnglish } from "../core/decompiler.js";
 import { executeContract } from "../core/executor.js";
 import { readTextFile } from "../io/fs.js";
 import type { ContractIR } from "../types/ir.js";
@@ -10,7 +10,6 @@ import { generateAllScenarios } from "./generate-scenario.js";
 
 export interface RunPipelineOptions {
   contractPath: string;
-  useLlm: boolean;
 }
 
 export interface ScenarioRun {
@@ -34,17 +33,19 @@ export async function runPipeline(
   const ir = await extractIr({
     contractText,
     sourceFile: basename(options.contractPath),
-    useLlm: options.useLlm,
   });
 
-  const { family, scenarios } = await generateAllScenarios({ ir, useLlm: options.useLlm });
-  const english = decompileIrToEnglish(ir);
+  const { family, scenarios } = await generateAllScenarios({
+    ir,
+    contractText,
+  });
 
   const runs: ScenarioRun[] = scenarios.map((scenario) => ({
     archetype: scenario.archetype ?? scenario.scenarioId,
     scenario,
     execution: executeContract(ir, scenario),
   }));
+  const english = decompileExecutionToEnglish(ir, runs);
 
   return { contractText, ir, english, family, runs };
 }

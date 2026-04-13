@@ -46,9 +46,9 @@ const leaseIr: ContractIR = {
     clauseCount: 2,
     modeledClauseCount: 2,
     extraction: {
-      llmRequested: false,
-      llmUsed: false,
-      mode: "heuristic_fallback",
+      llmRequested: true,
+      llmUsed: true,
+      mode: "llm",
     },
   },
 };

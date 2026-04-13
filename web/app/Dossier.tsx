@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type {
   Breach,
   Clause,
+  ContractOption,
   ContractMeta,
   Expr,
   IR,
@@ -15,10 +16,11 @@ import type {
 } from "./lib/types";
 
 interface Props {
-  contracts: ContractMeta[];
-  selectedContractId: string;
-  meta: ContractMeta;
-  ir: IR;
+  contracts: ContractOption[];
+  selectedContractKey: string;
+  selectedSourceFile: string;
+  meta: ContractMeta | null;
+  ir: IR | null;
   contract: string;
   english: string;
   scenario: Scenario | null;
@@ -51,6 +53,22 @@ function fmtDate(d?: string): string {
     });
   } catch {
     return d;
+  }
+}
+
+function fmtNumber(n: number | undefined | null): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n);
+}
+
+function fmtScenarioValue(value: unknown): string {
+  if (value == null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
 }
 
@@ -149,7 +167,8 @@ function ClauseBody({ c }: { c: Clause }) {
 
 export default function Dossier({
   contracts,
-  selectedContractId,
+  selectedContractKey,
+  selectedSourceFile,
   meta,
   ir,
   contract,
@@ -161,17 +180,34 @@ export default function Dossier({
   const router = useRouter();
   const [hover, setHover] = useState<Link>({});
   const [locked, setLocked] = useState<Link>({});
-  const [ranFor, setRanFor] = useState<string | null>(null);
   const [liveExecution, setLiveExecution] = useState<RunResult | null>(execution);
   const [isRunning, setIsRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [isGeneratingIr, setIsGeneratingIr] = useState(false);
+  const [irError, setIrError] = useState<string | null>(null);
+  const [isGeneratingScenarios, setIsGeneratingScenarios] = useState(false);
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadFileName, setUploadFileName] = useState<string>("");
+  const uploadRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    setRanFor(null);
     setLiveExecution(execution);
     setIsRunning(false);
     setRunError(null);
-  }, [selectedContractId, selectedArchetype]);
+    setIsGeneratingIr(false);
+    setIrError(null);
+    setIsGeneratingScenarios(false);
+    setScenarioError(null);
+  }, [selectedContractKey, selectedArchetype]);
+
+  useEffect(() => {
+    setUploading(false);
+    setUploadError(null);
+    setUploadFileName("");
+    if (uploadRef.current) uploadRef.current.value = "";
+  }, [selectedContractKey]);
 
   useEffect(() => {
     const clear = () => setLocked({});
@@ -211,9 +247,21 @@ export default function Dossier({
     [],
   );
 
-  const currency = ir.currency ?? "USD";
+  const hasIrArtifacts = Boolean(ir);
+  const currency = ir?.currency ?? "USD";
   const summary = liveExecution?.summary ?? {};
-  const runResultsVisible = ranFor === selectedArchetype && !!liveExecution;
+  const runResultsVisible = Boolean(liveExecution);
+  const scenarios = meta?.scenarios ?? [];
+  const hasScenarioArtifacts = scenarios.length > 0;
+  const hasEnglishArtifact = Boolean(english.trim());
+  const selectedContract = contracts.find((contract) => contract.key === selectedContractKey);
+  const scenarioAssumptions = scenario?.assumptions ?? [];
+  const scenarioEvents = scenario?.events ?? [];
+  const scenarioInitialStateEntries = useMemo(
+    () => Object.entries(scenario?.initialState ?? {}) as Array<[string, unknown]>,
+    [scenario],
+  );
+  const scenarioGeneration = scenario?.metadata?.generation;
 
   const englishBlocks = useMemo(() => {
     return english.split("\n").map((raw, i) => {
@@ -253,20 +301,20 @@ export default function Dossier({
     });
   }, [english, linkClass, linkHandlers]);
 
-  const selectContract = (contractId: string) => {
-    if (contractId !== selectedContractId) {
-      router.push(`/?contract=${encodeURIComponent(contractId)}`);
+  const selectContract = (contractKey: string) => {
+    if (contractKey !== selectedContractKey) {
+      router.push(`/?contract=${encodeURIComponent(contractKey)}`);
     }
   };
 
   const selectScenario = (archetype: string) => {
     router.push(
-      `/?contract=${encodeURIComponent(selectedContractId)}&scenario=${encodeURIComponent(archetype)}`,
+      `/?contract=${encodeURIComponent(selectedContractKey)}&scenario=${encodeURIComponent(archetype)}`,
     );
   };
 
   const runNow = async () => {
-    if (!selectedArchetype || isRunning) return;
+    if (!selectedArchetype || isRunning || !hasIrArtifacts) return;
     setIsRunning(true);
     setRunError(null);
     try {
@@ -274,7 +322,7 @@ export default function Dossier({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          contractId: selectedContractId,
+          contractKey: selectedContractKey,
           archetype: selectedArchetype,
         }),
       });
@@ -286,11 +334,99 @@ export default function Dossier({
         throw new Error(payload.error || "Execution request failed");
       }
       setLiveExecution(payload.execution);
-      setRanFor(selectedArchetype);
+      router.refresh();
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "Execution failed");
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const generateIr = async () => {
+    if (isGeneratingIr) return;
+    setIsGeneratingIr(true);
+    setIrError(null);
+    setScenarioError(null);
+    setRunError(null);
+    setLiveExecution(null);
+    try {
+      const response = await fetch("/api/run-contract", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "generate-ir",
+          contractKey: selectedContractKey,
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "IR generation failed");
+      }
+      router.push(`/?contract=${encodeURIComponent(selectedContractKey)}`);
+      router.refresh();
+    } catch (error) {
+      setIrError(error instanceof Error ? error.message : "IR generation failed");
+    } finally {
+      setIsGeneratingIr(false);
+    }
+  };
+
+  const generateScenarios = async () => {
+    if (isGeneratingScenarios || !hasIrArtifacts) return;
+    setIsGeneratingScenarios(true);
+    setScenarioError(null);
+    setRunError(null);
+    setLiveExecution(null);
+    try {
+      const response = await fetch("/api/run-contract", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "generate-scenarios",
+          contractKey: selectedContractKey,
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Scenario generation failed");
+      }
+      router.push(`/?contract=${encodeURIComponent(selectedContractKey)}`);
+      router.refresh();
+    } catch (error) {
+      setScenarioError(error instanceof Error ? error.message : "Scenario generation failed");
+    } finally {
+      setIsGeneratingScenarios(false);
+    }
+  };
+
+  const uploadContract = async () => {
+    const input = uploadRef.current;
+    const file = input?.files?.[0];
+    if (!file || uploading) return;
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/upload-contract", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        contractKey?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.ok || !payload.contractKey) {
+        throw new Error(payload.error || "Upload failed");
+      }
+      router.push(`/?contract=${encodeURIComponent(payload.contractKey)}`);
+      router.refresh();
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -303,40 +439,85 @@ export default function Dossier({
             <label htmlFor="contract-select">Contract</label>
             <select
               id="contract-select"
-              value={selectedContractId}
+              value={selectedContractKey}
               onChange={(e) => selectContract(e.target.value)}
             >
               {contracts.map((c) => (
-                <option key={c.contractId} value={c.contractId}>
-                  {c.title} ({c.family})
+                <option key={c.key} value={c.key}>
+                  {c.title} {c.scenariosReady ? "[scenarios]" : c.irReady ? "[ir]" : "[raw]"}
                 </option>
               ))}
             </select>
+            <div className="pipeline-controls">
+              <input
+                ref={uploadRef}
+                type="file"
+                accept=".md,text/markdown,text/plain"
+                onChange={(e) => {
+                  setUploadError(null);
+                  setUploadFileName(e.target.files?.[0]?.name ?? "");
+                }}
+              />
+              <button
+                type="button"
+                className="execute-button"
+                onClick={uploadContract}
+                disabled={uploading || !uploadFileName}
+              >
+                {uploading ? "Uploading..." : "Upload Held-Out .md"}
+              </button>
+            </div>
+            {uploadFileName ? (
+              <div className="hint" style={{ marginTop: 6 }}>
+                Selected upload: <span className="mono">{uploadFileName}</span>
+              </div>
+            ) : null}
+            {uploadError ? (
+              <div className="hint error" style={{ marginTop: 6 }}>
+                {uploadError}
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="meta">
-          <div>id: <strong>{meta.contractId}</strong></div>
+          <div>key: <strong>{selectedContractKey}</strong></div>
+          <div>source: {selectedSourceFile}</div>
+          <div>origin: {selectedContract?.origin ?? "unknown"}</div>
+          <div>ir: {hasIrArtifacts ? "ready" : "not generated"}</div>
+          <div>scenarios: {hasScenarioArtifacts ? "ready" : "not generated"}</div>
+          <div>english: {hasEnglishArtifact ? "ready" : "not generated"}</div>
           <div>
-            {ir.parties?.map((p) => p.name).slice(0, 2).join(" ↔ ") || "—"}
+            {ir?.parties?.map((p) => p.name).slice(0, 2).join(" ↔ ") || "—"}
             {" · "}
             {currency}
-            {ir.metadata ? (
+            {ir?.metadata ? (
               <>
                 {" "}
-                · {ir.metadata.modeledClauseCount ?? 0}/{ir.metadata.clauseCount ?? 0} modeled
+                · {ir?.metadata?.modeledClauseCount ?? 0}/{ir?.metadata?.clauseCount ?? 0} modeled
               </>
             ) : null}
           </div>
+          {meta ? <div>family: {meta.family}</div> : null}
         </div>
       </header>
 
       <section className="zone">
         <div className="zone-label">
-          Step 1 · Contract → IR + English
+          Step 1 · Contract → IR
           <span className="hint">
-            {" "}— the runtime parses the markdown on the left and deterministically regenerates English
-            from the IR on the right
+            {" "}— parse contract markdown into executable clauses (run this first)
           </span>
+        </div>
+        <div className="pipeline-controls" style={{ marginBottom: 10 }}>
+          <button
+            type="button"
+            className="execute-button"
+            onClick={generateIr}
+            disabled={isGeneratingIr}
+          >
+            {isGeneratingIr ? "Generating IR..." : "Generate IR"}
+          </button>
+          {irError ? <span className="hint error">{irError}</span> : null}
         </div>
         <div className="inputs">
           <div className="input-panel">
@@ -346,23 +527,16 @@ export default function Dossier({
             </div>
             <pre className="body">{contract || "(contract.md not found)"}</pre>
           </div>
-          <div className="input-panel">
-            <div className="head">
-              <span className="label">english.txt</span>
-              <span>deterministic regeneration · no LLM</span>
-            </div>
-            <div className="english-body">{englishBlocks}</div>
-          </div>
         </div>
 
         <details className="ir-drawer">
           <summary>
             <strong>Show intermediate representation</strong>
             {" — "}
-            {(ir.clauses ?? []).length} clauses drive every scenario below
+            {(ir?.clauses ?? []).length} clauses drive every scenario below
           </summary>
           <div className="ir-body">
-            {(ir.clauses ?? []).map((c) => (
+            {(ir?.clauses ?? []).map((c) => (
               <div
                 key={c.id}
                 className={`article ${linkClass(c.id)}`}
@@ -380,46 +554,176 @@ export default function Dossier({
                 </div>
               </div>
             ))}
+            {(ir?.clauses ?? []).length === 0 ? (
+              <div className="muted italic" style={{ padding: 12 }}>
+                (IR unavailable until "Generate IR" runs for this contract)
+              </div>
+            ) : null}
           </div>
         </details>
       </section>
 
       <section className="zone">
         <div className="zone-label">
-          Step 2 · Pick a scenario for this contract
+          Step 2 · Generate and Pick a Scenario
           <span className="hint">
-            {" "}— scenarios are generated for the <strong>{meta.family}</strong> family; each exercises
-            a distinct archetype
+            {" "}— create scenario artifacts from the IR, then choose one archetype
           </span>
         </div>
-        <div className="scenarios">
-          {meta.scenarios.map((s) => {
-            const isSelected = s.archetype === selectedArchetype;
-            return (
-              <button
-                key={s.archetype}
-                type="button"
-                className={`scenario-card${isSelected ? " selected" : ""}`}
-                onClick={() => selectScenario(s.archetype)}
-                aria-pressed={isSelected}
-              >
-                <div className="run-id">{s.archetype}</div>
-                <div className="title">{s.label}</div>
-                <div className="events">
-                  <span>{s.scenarioId}</span>
-                </div>
-                <div className="foot">
-                  <span className="bal">{fmtMoney(s.endingBalance, currency)}</span>
-                  {s.breached ? (
-                    <span className="breach-badge yes">breach</span>
-                  ) : (
-                    <span className="breach-badge no">clean</span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+        <div className="pipeline-controls" style={{ marginBottom: 10 }}>
+          <button
+            type="button"
+            className="execute-button"
+            onClick={generateScenarios}
+            disabled={!hasIrArtifacts || isGeneratingScenarios}
+          >
+            {isGeneratingScenarios ? "Generating Scenarios..." : "Generate Scenarios"}
+          </button>
+          {scenarioError ? <span className="hint error">{scenarioError}</span> : null}
         </div>
+        {scenarios.length === 0 ? (
+          <div className="execute-prompt">
+            <div className="hint">
+              {hasIrArtifacts
+                ? 'No scenario artifacts yet. Click "Generate Scenarios".'
+                : 'Generate IR first, then run "Generate Scenarios".'}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="scenarios">
+              {scenarios.map((s) => {
+                const isSelected = s.archetype === selectedArchetype;
+                const hasScenarioExecution =
+                  typeof s.endingBalance === "number" && typeof s.breached === "boolean";
+                return (
+                  <button
+                    key={s.archetype}
+                    type="button"
+                    className={`scenario-card${isSelected ? " selected" : ""}`}
+                    onClick={() => selectScenario(s.archetype)}
+                    aria-pressed={isSelected}
+                  >
+                    <div className="run-id">{s.archetype}</div>
+                    <div className="title">{s.label}</div>
+                    <div className="events">
+                      <span>{s.scenarioId}</span>
+                    </div>
+                    <div className="foot">
+                      <span className="bal">
+                        {hasScenarioExecution ? fmtMoney(s.endingBalance, currency) : "not run"}
+                      </span>
+                      {s.breached === true ? (
+                        <span className="breach-badge yes">breach</span>
+                      ) : s.breached === false ? (
+                        <span className="breach-badge no">clean</span>
+                      ) : (
+                        <span className="breach-badge pending">pending</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="scenario-details">
+              {scenario ? (
+                <>
+                  <div className="scenario-details-head">
+                    <div className="scenario-details-title">
+                      {scenario.label ?? scenario.archetype ?? "Selected scenario"}
+                    </div>
+                    <div className="scenario-details-meta">
+                      <span className="mono">{scenario.archetype ?? selectedArchetype ?? "—"}</span>
+                      <span className="dot">·</span>
+                      <span className="mono">{scenario.scenarioId ?? "—"}</span>
+                      {scenarioGeneration?.mode ? (
+                        <>
+                          <span className="dot">·</span>
+                          <span className="mono">mode={scenarioGeneration.mode}</span>
+                        </>
+                      ) : null}
+                      {typeof scenarioGeneration?.promptTruncated === "boolean" ? (
+                        <>
+                          <span className="dot">·</span>
+                          <span className="mono">
+                            promptTruncated={String(scenarioGeneration.promptTruncated)}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="scenario-details-grid">
+                    <div className="detail-section">
+                      <div className="detail-label">
+                        Assumptions ({scenarioAssumptions.length})
+                      </div>
+                      {scenarioAssumptions.length > 0 ? (
+                        <ul className="scenario-list">
+                          {scenarioAssumptions.map((assumption, idx) => (
+                            <li key={`${idx}-${assumption}`}>{assumption}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="muted italic">(none)</div>
+                      )}
+                    </div>
+                    <div className="detail-section">
+                      <div className="detail-label">
+                        Initial State ({scenarioInitialStateEntries.length})
+                      </div>
+                      {scenarioInitialStateEntries.length > 0 ? (
+                        <div className="state-kv">
+                          {scenarioInitialStateEntries.map(([key, value]) => (
+                            <div key={key} className="state-row">
+                              <span className="state-key mono">{key}</span>
+                              <span className="state-value mono">{fmtScenarioValue(value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="muted italic">(none)</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="detail-section" style={{ marginTop: 12 }}>
+                    <div className="detail-label">Event Timeline ({scenarioEvents.length})</div>
+                    {scenarioEvents.length > 0 ? (
+                      <div className="scenario-events">
+                        <div className="scenario-events-head">
+                          <span>ID</span>
+                          <span>Date</span>
+                          <span>Type</span>
+                          <span className="r">Amount</span>
+                        </div>
+                        {scenarioEvents.map((event) => (
+                          <div key={event.id} className="scenario-events-block">
+                            <div className="scenario-events-row">
+                              <span className="mono">{event.id}</span>
+                              <span className="mono">{fmtDate(event.date)}</span>
+                              <span className="mono">{event.type}</span>
+                              <span className="mono r">{fmtNumber(event.amount)}</span>
+                            </div>
+                            {event.metadata && Object.keys(event.metadata).length > 0 ? (
+                              <pre className="scenario-event-meta">
+                                {JSON.stringify(event.metadata, null, 2)}
+                              </pre>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="muted italic">(none)</div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="hint">
+                  Select a scenario card above to inspect assumptions, initial state, and event data.
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="zone">
@@ -430,35 +734,37 @@ export default function Dossier({
           </span>
         </div>
 
-        {!runResultsVisible ? (
-          <div className="execute-prompt">
-            <button
-              type="button"
-              className="execute-button"
-              onClick={runNow}
-              disabled={!selectedArchetype || isRunning}
-            >
-              {isRunning ? "Running..." : "▶ Run"}{" "}
-              <span className="mono">{selectedArchetype ?? ""}</span>{" "}
-              against <span className="mono">{meta.contractId}</span>
-            </button>
-            <div className="hint" style={{ marginTop: 8 }}>
-              {scenario ? (
-                <>
-                  Will replay {scenario.events?.length ?? 0} events and{" "}
-                  {scenario.assumptions?.length ?? 0} assumptions through the runtime.
-                </>
-              ) : (
-                <>Select a scenario above to enable this step.</>
-              )}
-            </div>
-            {runError ? (
-              <div className="hint" style={{ marginTop: 8, color: "#b42318" }}>
-                {runError}
-              </div>
-            ) : null}
+        <div className="execute-prompt">
+          <button
+            type="button"
+            className="execute-button"
+            onClick={runNow}
+            disabled={!selectedArchetype || isRunning || !hasIrArtifacts}
+          >
+            {isRunning ? "Running..." : "▶ Run"}{" "}
+            <span className="mono">{selectedArchetype ?? ""}</span>{" "}
+            against <span className="mono">{selectedContractKey}</span>
+          </button>
+          <div className="hint spaced">
+            {scenario ? (
+              <>
+                Will replay {scenario.events?.length ?? 0} events and{" "}
+                {scenario.assumptions?.length ?? 0} assumptions through the runtime.
+              </>
+            ) : (
+              <>
+                {hasScenarioArtifacts
+                  ? 'Select a scenario above to enable execution, then Step 4 will generate "english.txt".'
+                  : hasIrArtifacts
+                    ? 'Generate scenarios first (Step 2), then click "Run".'
+                    : "Generate IR first (Step 1)."}
+              </>
+            )}
           </div>
-        ) : (
+          {runError ? <div className="hint error spaced">{runError}</div> : null}
+        </div>
+
+        {runResultsVisible ? (
           <>
             <div className="exec-ribbon">
               <div className="exec-cell">
@@ -569,7 +875,31 @@ export default function Dossier({
               ))}
             </div>
           </>
-        )}
+        ) : null}
+      </section>
+
+      <section className="zone">
+        <div className="zone-label">
+          Step 4 · Deterministic executable → English
+          <span className="hint">
+            {" "}— generated after Step 3 from IR + scenario inputs + runtime outputs; no LLM
+          </span>
+        </div>
+        <div className="input-panel">
+          <div className="head">
+            <span className="label">english.txt</span>
+            <span>derived after runtime execution</span>
+          </div>
+          <div className="english-body">
+            {hasEnglishArtifact ? (
+              englishBlocks
+            ) : (
+              <span className="line muted italic">
+                Run Step 3 to generate `english.txt`.
+              </span>
+            )}
+          </div>
+        </div>
       </section>
     </main>
   );

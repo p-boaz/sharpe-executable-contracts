@@ -139,7 +139,7 @@ export interface ContractIR {
     extraction: {
       llmRequested: boolean;
       llmUsed: boolean;
-      mode: "llm" | "heuristic_fallback";
+      mode: "llm";
     };
   };
 }

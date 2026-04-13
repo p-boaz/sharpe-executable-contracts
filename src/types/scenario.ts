@@ -30,8 +30,11 @@ export interface Scenario {
     generation: {
       llmRequested: boolean;
       llmUsed: boolean;
-      mode: "llm" | "deterministic_fallback" | "llm_validated_fallback";
+      mode: "llm";
       archetype?: string;
+      contractHash?: string;
+      contractChars?: number;
+      promptTruncated?: boolean;
       validationNote?: string;
     };
   };

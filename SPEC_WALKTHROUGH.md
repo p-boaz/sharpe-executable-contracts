@@ -23,23 +23,24 @@ tree that never evaluates."
 
 **What we've shipped:**
 
-- Executable IR lives in `src/types/ir.ts` with clauses typed as
-  `obligation | formula | fee | default` (plus `definition`).
+- Executable IR lives in `src/types/ir.ts` as effect-based clauses
+  (`clause.effect.kind`), with open `semanticTag`s and optional
+  conditions.
 - Real runner in `src/core/executor.ts` — APR-driven balances, minimum
   payments, late + over-limit fees, breach flags, stateful month-
   stepping for credit-card; modeled monthly-rent execution for lease.
-- Deterministic decompiler in `src/core/decompiler.ts` (~84 lines, zero
-  LLM imports).
+- Deterministic decompiler in `src/core/decompiler.ts` (LLM-free):
+  it renders the executable representation and executed outcomes
+  (`ir + scenario + execution`) into `english.txt`.
 - Round-trip demonstrated via `pnpm run run`, which writes a
   per-contract bundle under `out/<contractId>/`: `contract.md` (copy
   of the source), `ir.json`, `english.txt`, `scenarios/<archetype>.json`
   and `executions/<archetype>.json` (one pair per archetype, see
   §2.6), and a `meta.json` with extraction + scenario stage metadata
   and artifact hashes. A separate `pnpm run determinism` command runs
-  the pipeline twice and hashes outputs; under `--use-llm` it narrows
-  the determinism assertion to `english.txt` only, matching the
-  brief's requirement that the executable-to-English leg stay
-  LLM-free.
+  the pipeline twice and hashes outputs; in LLM-required mode it treats
+  cross-run IR/scenario/execution drift as expected and checks that
+  executable-state decompilation remains deterministic for each run.
 - Honest-limits posture is baked in: unmodeled clauses carry
   `modeled: false` and the decompiler prefixes them `[UNMODELED]` in
   English.
@@ -67,8 +68,7 @@ The brief breaks Part 1 into several sub-asks. Addressing each:
 
 ### 2.2 "Parse clauses and pull out obligations, conditions, deadlines, penalties"
 
-Extraction has two paths, selected by `--use-llm` / `--no-llm`
-(default-on when `OPENAI_API_KEY` is set, closed by T16):
+Extraction is now LLM-required (`OPENAI_API_KEY` must be set):
 
 - **LLM path** (`extract-ir.ts:925`). Prompts an OpenAI model to emit
   JSON conforming to `ContractIR`. Normalizers (`normalizeClause`,
@@ -77,12 +77,8 @@ Extraction has two paths, selected by `--use-llm` / `--no-llm`
   are dropped, malformed clauses become `modeled: false` stubs rather
   than being trusted. This is the generality path for held-out
   Markdown.
-- **Heuristic fallback** (`heuristicFallbackIr`, `extract-ir.ts:477`).
-  Regex-driven extraction specialized for credit-card and lease
-  families, plus `addGenericUnmodeledClauses` which walks headings
-  and emits `modeled: false` placeholders for anything it doesn't
-  recognize. When a judge runs with `--no-llm`, a stderr banner
-  names the two covered families so degradation is visible.
+- Legacy heuristic fallback code still exists in-tree for reference,
+  but it is no longer reachable from the CLI or pipeline.
 
 Clauses carry deterministic source spans (T6) so the IR links back to
 the original Markdown offsets.
@@ -92,16 +88,12 @@ the original Markdown offsets.
 IR shape (`src/types/ir.ts`):
 
 - `ContractIR { contractId, title, parties, definitions, clauses[], metadata }`.
-- Clause union: `obligation | formula | fee | default` (+ `definition`).
-- `obligation` carries `actor`, `action`, `due: TemporalRule`,
-  optional `condition: BoolExpr`, optional `curePeriod`.
-- `formula` carries an `Expr` tree over `const | var | add | sub | mul | div | max | min`.
-- `fee` is typed: `late_payment | over_limit | returned_payment | foreign_txn`,
-  with `fixed` or `percent` amount.
-- Metadata includes `extractionHash` (deterministic over input text,
-  replacing the old fake `1970-01-01` timestamp — T4) and
-  `extraction.mode` so the artifact itself records whether the IR
-  came from the LLM or the heuristic fallback.
+- Clause shape: `{ semanticTag, condition?, effect }`.
+- `effect.kind` currently supports `payment | obligation | formula |
+  accumulation | indemnification | default | unmodeled`.
+- `Expr` and `BoolExpr` trees keep formulas/conditions executable.
+- Metadata includes deterministic `extractionHash` and
+  `extraction.mode` (`llm` in runtime paths).
 
 ### 2.4 "Run the logic"
 
@@ -126,20 +118,19 @@ doesn't consume it. That's an honest gap, not a hidden one.
 
 ### 2.5 "Execution data (facts and scenarios)"
 
-- `scenario.json` is an explicit artifact on disk. It has an
-  `initialState`, an `events[]` timeline, and carries `archetype`
-  + `label` + `assumptions[]` so judges can see *what* was
-  assumed and *why*.
-- `execution.json` mirrors every scenario event in a ledger plus
-  obligation status + breach list. "What you passed in" and "what
-  came out" are visually parallel.
+- Scenarios are explicit artifacts on disk:
+  `scenarios/<archetype>.json`. Each has `initialState`, an
+  `events[]` timeline, and `archetype + label + assumptions[]`.
+- Executions are stored as `executions/<archetype>.json` with ledger,
+  obligations, breach list, and summary. "What you passed in" and
+  "what came out" are visually parallel.
 
 ### 2.6 "LLM to generate sample data" (required)
 
-- `src/pipeline/generate-scenario.ts` has a `--use-llm` path
-  (`generateScenario`) that prompts an OpenAI model for a timeline
-  conforming to the `Scenario` type, tied to the IR it just
-  extracted.
+- `src/pipeline/generate-scenario.ts` (`generateScenario`) prompts
+  an OpenAI model for a timeline
+  conforming to the `Scenario` type, conditioned on both contract
+  Markdown and the extracted IR.
 - **Archetype layer** (T17a, `src/pipeline/archetypes.ts`): per
   family, generation loops named archetypes — credit-card gets
   `on-time`, `late-payment`, `over-limit`; lease gets `on-time`,
@@ -153,13 +144,12 @@ doesn't consume it. That's an honest gap, not a hidden one.
   payment dated past due *and* a `late-fee` ledger entry whose
   `clauseId` maps to a modeled fee clause in the IR. Shape-only
   passes are rejected. If the LLM candidate fails validation,
-  the system falls back to the deterministic fixture and records
-  the failure reason in `scenario.validationNote` — honest over
-  silent.
+  the pipeline now fails fast with an explicit error.
 - Per-contract output: `out/<contractId>/scenarios/<archetype>.json`
   and `out/<contractId>/executions/<archetype>.json` (T17b storage
   rework). One contract, many archetypes, join key is the
-  filename.
+  filename. Scenario metadata captures generation mode and
+  contract-context trace fields (`contractHash`, prompt truncation).
 
 ### 2.7 Gaps vs Part 1
 
@@ -168,9 +158,8 @@ doesn't consume it. That's an honest gap, not a hidden one.
 - Cross-reference resolution ("as defined in Section 3.2") is not
   implemented; definitions exist in the IR but the executor doesn't
   use them to resolve terms.
-- Heuristic fallback only deeply covers credit-card + lease. For
-  other families on `--no-llm`, extraction degrades to headings +
-  unmodeled placeholders (which is honest, but thin).
+- Held-out behavior now depends entirely on LLM extractor quality.
+  There is no non-LLM execution path in the CLI.
 
 **Key insight.** The repo treats scenario generation as a
 *validated* step, not a *trusted* one. The AND-form validator is
@@ -195,7 +184,7 @@ All 5 spec samples are present, plus 2 extras:
 | --- | --- | --- |
 | `WesTex-VISA-credit-card-agreement.md` | Credit card | Full — APR, min payment, late + over-limit fees, default |
 | `Galleria-Atlanta-office-lease-American-Safety-Insurance-2006.md` | Office lease | Modeled monthly rent + obligation met/breached; rest unmodeled |
-| `ORBCOMM-Orbital-amendment-1-AIS-payload-procurement-2006.md` | Procurement | LLM-only; heuristic fallback gives headings + unmodeled placeholders |
+| `ORBCOMM-Orbital-amendment-1-AIS-payload-procurement-2006.md` | Procurement | LLM-only extraction/execution path |
 | `Masterworks084-IndieBrokers-Regulation-A-engagement-letter.md` | Engagement letter | Same — LLM-only full path |
 | `A-Plus-Xodtec-securities-exchange-agreement-2009.md` | Securities exchange | Same — LLM-only full path |
 | `OneAmerica-MBSC-service-agreement-2015.md` | Service agreement (extra) | Same — LLM-only full path |
@@ -204,7 +193,7 @@ All 5 spec samples are present, plus 2 extras:
 ### 3.2 End-to-end exercise status
 
 - **Credit card + lease:** fully exercised end-to-end on the
-  deterministic heuristic path. `pnpm demo` runs the credit-card
+  LLM-required path. `pnpm demo` runs the credit-card
   contract into `out/demo/`; the lease is driven via
   `pnpm run run --contract contracts/Galleria-Atlanta-office-lease-American-Safety-Insurance-2006.md`
   (or any other contract path). Either run produces
@@ -212,13 +201,8 @@ All 5 spec samples are present, plus 2 extras:
   real execution with ledger entries + breaches, and deterministic
   English. The bundled `out/<contractId>/` artifacts for these two
   families are what the web dossier renders.
-- **Other 5 samples:** LLM path has been used to extract IRs from
-  each of them historically (see `out/_llm_sweep/`), but the
-  heuristic path degrades to headings + unmodeled placeholders.
-  A judge without an API key will see that degradation; the
-  stderr banner under `--no-llm` names credit-card and lease as
-  the only deeply covered families so this is visible at run time
-  rather than hidden.
+- **Other 5 samples:** LLM path is the only supported path for
+  extraction + scenario generation.
 
 ### 3.3 Generality posture
 
@@ -234,14 +218,12 @@ held-out set of Markdown contracts. Our posture is:
 3. Decompiler is family-agnostic — it walks the typed clause union,
    not family-specific templates — so English is produced even on
    contracts we've never seen.
-4. What we *don't* claim: that the heuristic fallback generalizes.
-   It is credit-card + lease only, and the CLI says so out loud.
+4. What we *don't* claim: deterministic cross-run IR/scenario
+   stability under LLM mode. The guarantee is deterministic
+   executable-state -> English decompilation.
 
 **Key insight.** The held-out generality claim is really a claim
 about the *LLM extractor + normalizers + typed IR shape* together.
-The heuristic fallback exists so the repo demos without network
-access, not because it's the generality story. Conflating those
-would be the dishonest version of this pitch — the SPEC_AUDIT
-explicitly calls this out as the weakest axis, and the stderr
-banner is how we keep that honest at judging time.
-
+The held-out generality claim depends on extractor + normalizer
+quality under LLM-required mode. That keeps the runtime path aligned
+with what judges will actually run.

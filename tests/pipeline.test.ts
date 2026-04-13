@@ -81,15 +81,22 @@ test("scenario generation is archetype-driven and IR-responsive", async () => {
 
   const late = archetypes.find((a) => a.id === "late-payment");
   assert.ok(late);
-  const scenario = await generateScenario({ ir, archetype: late, useLlm: false });
+  const scenario = await generateScenario({
+    ir,
+    contractText,
+    archetype: late,
+    useLlm: false,
+  });
   assert.equal(scenario.archetype, "late-payment");
   assert.equal(scenario.label, "Late payment, below minimum");
   assert.equal(scenario.initialState.contractFamily, "credit_card");
   assert.equal(scenario.metadata?.generation.mode, "deterministic_fallback");
   assert.equal(scenario.metadata?.generation.archetype, "late-payment");
+  assert.equal(typeof scenario.metadata?.generation.contractHash, "string");
+  assert.equal(scenario.metadata?.generation.promptTruncated, false);
   assert.ok(scenario.assumptions.length >= 3);
 
-  const { scenarios } = await generateAllScenarios({ ir, useLlm: false });
+  const { scenarios } = await generateAllScenarios({ ir, contractText, useLlm: false });
   assert.equal(scenarios.length, 3);
   assert.deepEqual(
     scenarios.map((s) => s.archetype),
@@ -174,6 +181,8 @@ test("decompiler is deterministic for same IR", async () => {
   const a = decompileIrToEnglish(result.ir);
   const b = decompileIrToEnglish(result.ir);
   assert.equal(a, b);
+  assert.match(result.english, /Execution Outcomes:/);
+  assert.match(result.english, /Archetype late-payment:/);
 });
 
 test("run command writes contract-keyed artifacts with archetype scenarios", () => {

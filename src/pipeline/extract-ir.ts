@@ -16,7 +16,6 @@ import type {
 export interface ExtractIrOptions {
   contractText: string;
   sourceFile: string;
-  useLlm: boolean;
 }
 
 const extractorVersion = "contract-ir-v1";
@@ -749,7 +748,7 @@ function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
     ].filter((party, index, arr) => arr.findIndex((p) => p.id === party.id) === index),
     definitions: extractDefinitions(text),
     clauses: clausesWithSpans,
-    metadata: buildMetadata(text, sourceFile, clausesWithSpans, "heuristic_fallback"),
+    metadata: buildMetadata(text, sourceFile, clausesWithSpans, "llm"),
   };
 }
 
@@ -1034,12 +1033,17 @@ function normalizeIr(raw: unknown, sourceFile: string, contractText: string): Co
 }
 
 export async function extractIr(options: ExtractIrOptions): Promise<ContractIR> {
-  if (!options.useLlm) {
-    return heuristicFallbackIr(options.contractText, options.sourceFile);
-  }
-
-  const systemPrompt =
-    "Extract a compact executable contract IR from markdown text. Keep only clauses that can be executed deterministically. Output strict JSON.";
+  const systemPrompt = [
+    "Extract a compact executable contract IR from markdown text.",
+    "Keep only clauses that can be executed deterministically.",
+    "Output strict JSON that matches the provided schema.",
+    "Path B shape requirements:",
+    "- Clause shape is { id, title, sourceText, modeled, semanticTag, condition?, effect }.",
+    "- Clause-level `kind` is obsolete. Put the discriminator at `effect.kind` only.",
+    "- Allowed `effect.kind` values: payment, obligation, formula, accumulation, indemnification, default, unmodeled.",
+    "- If a clause is not deterministically executable, set `modeled: false` and `effect: { \"kind\": \"unmodeled\" }`.",
+    "- Keep `semanticTag` specific and domain-meaningful (open vocabulary).",
+  ].join("\n");
 
   const userPrompt = `Source file: ${options.sourceFile}\n\nContract markdown:\n${options.contractText}`;
 
@@ -1053,6 +1057,6 @@ export async function extractIr(options: ExtractIrOptions): Promise<ContractIR> 
     return normalizeIr(llmResult, options.sourceFile, options.contractText);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`IR extraction failed in --use-llm mode: ${message}`);
+    throw new Error(`IR extraction failed in LLM-required mode: ${message}`);
   }
 }

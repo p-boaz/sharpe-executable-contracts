@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "node --import tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "check:expectations": "tsx scripts/check-expectations.ts",
     "test:expr": "tsx src/core/eval-expr.test.ts",
     "test:conditions": "tsx src/core/condition-exec.test.ts",
     "run": "tsx src/main.ts run",
@@ -14,12 +15,13 @@
     "determinism": "tsx src/main.ts determinism"
   },
   "dependencies": {
+    "yaml": "^2.8.3",
     "zod": "^4.2.1"
   },
   "devDependencies": {
+    "@types/node": "^22.18.6",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "@types/node": "^22.18.6"
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@10.30.3"
 }

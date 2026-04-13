@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import Dossier from "./Dossier";
-import type { ContractMeta, IR, RunResult, Scenario } from "./lib/types";
+import type { ContractMeta, ContractOption, IR, RunResult, Scenario } from "./lib/types";
 
-const OUT_DIR = path.resolve(process.cwd(), "..", "out");
+const CONTRACTS_DIR = path.resolve(process.cwd(), "..", "contracts");
+const UPLOADED_DIR = path.resolve(CONTRACTS_DIR, "_uploaded");
+const WEB_RUNS_DIR = path.resolve(process.cwd(), "..", "out", "_web_runs");
 
 async function readJson<T>(p: string): Promise<T | null> {
   try {
@@ -12,6 +14,7 @@ async function readJson<T>(p: string): Promise<T | null> {
     return null;
   }
 }
+
 async function readText(p: string): Promise<string> {
   try {
     return await fs.readFile(p, "utf8");
@@ -20,36 +23,89 @@ async function readText(p: string): Promise<string> {
   }
 }
 
-async function listContracts(): Promise<ContractMeta[]> {
+async function listMarkdownFiles(dir: string): Promise<string[]> {
   let entries: import("node:fs").Dirent[];
   try {
-    entries = await fs.readdir(OUT_DIR, { withFileTypes: true });
+    entries = await fs.readdir(dir, { withFileTypes: true });
   } catch {
     return [];
   }
-  const metas: ContractMeta[] = [];
-  for (const e of entries) {
-    if (!e.isDirectory()) continue;
-    if (e.name.startsWith("_")) continue;
-    const meta = await readJson<ContractMeta>(path.join(OUT_DIR, e.name, "meta.json"));
-    if (meta && Array.isArray(meta.scenarios)) {
-      metas.push({ ...meta, contractId: e.name });
-    }
-  }
-  return metas.sort((a, b) => a.contractId.localeCompare(b.contractId));
+
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((name) => name.toLowerCase().endsWith(".md"))
+    .sort((a, b) => a.localeCompare(b));
 }
 
-async function loadContract(contractId: string, archetype: string | null) {
-  const base = path.join(OUT_DIR, contractId);
-  const [ir, contract, english, meta] = await Promise.all([
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\.md$/i, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function titleFromFileName(fileName: string): string {
+  return fileName.replace(/\.md$/i, "").replace(/[-_]+/g, " ");
+}
+
+async function listContracts(): Promise<ContractOption[]> {
+  const bundled = (await listMarkdownFiles(CONTRACTS_DIR))
+    .filter((sourceFile) => sourceFile !== "SOURCES.md")
+    .map((sourceFile): Omit<ContractOption, "processed" | "irReady" | "scenariosReady"> => ({
+      key: slugify(sourceFile),
+      sourceFile,
+      title: titleFromFileName(sourceFile),
+      origin: "bundled",
+    }));
+  const uploaded = (await listMarkdownFiles(UPLOADED_DIR)).map(
+    (sourceFile): Omit<ContractOption, "processed" | "irReady" | "scenariosReady"> => ({
+      key: slugify(sourceFile),
+      sourceFile: path.posix.join("_uploaded", sourceFile),
+      title: `${titleFromFileName(sourceFile)} (uploaded)`,
+      origin: "uploaded",
+    }),
+  );
+  const contracts = [...bundled, ...uploaded];
+
+  const options: ContractOption[] = [];
+  for (const contract of contracts) {
+    const [meta, ir] = await Promise.all([
+      readJson<ContractMeta>(path.join(WEB_RUNS_DIR, contract.key, "meta.json")),
+      readJson<IR>(path.join(WEB_RUNS_DIR, contract.key, "ir.json")),
+    ]);
+    const scenariosReady = Boolean(meta && Array.isArray(meta.scenarios) && meta.scenarios.length > 0);
+    options.push({
+      ...contract,
+      processed: scenariosReady,
+      irReady: Boolean(ir),
+      scenariosReady,
+    });
+  }
+  return options;
+}
+
+async function loadContract(contract: ContractOption, archetype: string | null): Promise<{
+  contractText: string;
+  ir: IR | null;
+  english: string;
+  meta: ContractMeta | null;
+  scenario: Scenario | null;
+  execution: RunResult | null;
+  selectedArchetype: string | null;
+}> {
+  const base = path.join(WEB_RUNS_DIR, contract.key);
+  const [contractText, ir, english, meta] = await Promise.all([
+    readText(path.join(CONTRACTS_DIR, contract.sourceFile)),
     readJson<IR>(path.join(base, "ir.json")),
-    readText(path.join(base, "contract.md")),
     readText(path.join(base, "english.txt")),
     readJson<ContractMeta>(path.join(base, "meta.json")),
   ]);
 
-  if (meta) meta.contractId = contractId;
-  const archetypes = (meta?.scenarios ?? []).map((s) => s.archetype);
+  const metaWithKey = meta ? { ...meta, contractId: contract.key } : null;
+  const archetypes = (metaWithKey?.scenarios ?? []).map((s) => s.archetype);
   const selectedArchetype =
     archetype && archetypes.includes(archetype) ? archetype : archetypes[0] ?? null;
 
@@ -62,13 +118,13 @@ async function loadContract(contractId: string, archetype: string | null) {
     ]);
   }
 
-  return { ir, contract, english, meta, scenario, execution, selectedArchetype };
+  return { contractText, ir, english, meta: metaWithKey, scenario, execution, selectedArchetype };
 }
 
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ contract?: string; scenario?: string; run?: string }>;
+  searchParams: Promise<{ contract?: string; scenario?: string }>;
 }) {
   const params = await searchParams;
   const contracts = await listContracts();
@@ -79,44 +135,26 @@ export default async function Page({
         <div className="err">
           <h3>No contracts found.</h3>
           <p>
-            Expected <code>../out/&lt;contractId&gt;/meta.json</code>. Run the pipeline:
-          </p>
-          <p>
-            <code>pnpm demo</code> &nbsp;or&nbsp;{" "}
-            <code>pnpm run run --contract contracts/&lt;file&gt;.md</code>
+            Expected markdown files under <code>../contracts/</code> or uploaded
+            files under <code>../contracts/_uploaded/</code>.
           </p>
         </div>
       </main>
     );
   }
 
-  const requested = params.contract ?? params.run;
-  const selectedContractId =
-    requested && contracts.some((c) => c.contractId === requested)
-      ? requested
-      : contracts[0].contractId;
-
-  const loaded = await loadContract(selectedContractId, params.scenario ?? null);
-
-  if (!loaded.ir || !loaded.meta) {
-    return (
-      <main className="sheet">
-        <div className="err">
-          <h3>
-            Contract <code>{selectedContractId}</code> is missing artifacts.
-          </h3>
-        </div>
-      </main>
-    );
-  }
+  const selectedContract =
+    contracts.find((contract) => contract.key === params.contract) ?? contracts[0];
+  const loaded = await loadContract(selectedContract, params.scenario ?? null);
 
   return (
     <Dossier
       contracts={contracts}
-      selectedContractId={selectedContractId}
+      selectedContractKey={selectedContract.key}
+      selectedSourceFile={selectedContract.sourceFile}
       meta={loaded.meta}
       ir={loaded.ir}
-      contract={loaded.contract}
+      contract={loaded.contractText}
       english={loaded.english}
       scenario={loaded.scenario}
       execution={loaded.execution}

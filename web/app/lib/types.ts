@@ -98,6 +98,18 @@ export interface Scenario {
   assumptions?: string[];
   initialState?: Record<string, unknown>;
   events?: ScenarioEvent[];
+  metadata?: {
+    generation?: {
+      llmRequested?: boolean;
+      llmUsed?: boolean;
+      mode?: string;
+      archetype?: string;
+      contractHash?: string;
+      contractChars?: number;
+      promptTruncated?: boolean;
+      validationNote?: string;
+    };
+  };
 }
 
 export interface ContractMeta {
@@ -107,14 +119,30 @@ export interface ContractMeta {
   sourceFile?: string;
   irHash?: string;
   englishHash?: string;
+  stages?: {
+    irGeneratedAt?: string;
+    scenariosGeneratedAt?: string;
+    lastExecutedAt?: string;
+    englishGeneratedAt?: string;
+  };
   scenarios: {
     archetype: string;
     label: string;
     scenarioId: string;
-    endingBalance: number;
-    breached: boolean;
-    breachCount: number;
+    endingBalance?: number;
+    breached?: boolean;
+    breachCount?: number;
   }[];
+}
+
+export interface ContractOption {
+  key: string;
+  sourceFile: string;
+  title: string;
+  processed: boolean;
+  irReady: boolean;
+  scenariosReady: boolean;
+  origin: "bundled" | "uploaded";
 }
 
 export interface LedgerEntry {

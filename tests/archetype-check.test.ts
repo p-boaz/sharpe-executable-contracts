@@ -25,8 +25,8 @@ async function scenariosFor(path: string) {
   const contractText = readFileSync(path, "utf8");
   const ir = await extractIr({ contractText, sourceFile: path, useLlm: false });
   const family = contractFamily(ir);
-  const { scenarios } = await generateAllScenarios({ ir, useLlm: false });
-  return { ir, family, scenarios };
+  const { scenarios } = await generateAllScenarios({ ir, contractText, useLlm: false });
+  return { ir, family, scenarios, contractText };
 }
 
 test("credit-card deterministic fallbacks pass AND-form validation", async () => {
@@ -62,10 +62,10 @@ test("lease deterministic fallbacks pass AND-form validation", async () => {
 });
 
 test("late-payment AND-form rejects scenario with late event but no fee in ledger", async () => {
-  const { ir } = await scenariosFor(CC_PATH);
+  const { ir, contractText } = await scenariosFor(CC_PATH);
   const archetypes = archetypesFor("credit_card");
   const late = archetypes.find((a) => a.id === "late-payment")!;
-  const scenario = await generateScenario({ ir, archetype: late, useLlm: false });
+  const scenario = await generateScenario({ ir, contractText, archetype: late, useLlm: false });
 
   // Shape-only: events show lateness, but we hand the validator an empty ledger.
   const emptyExecution = {
@@ -86,11 +86,12 @@ test("late-payment AND-form rejects scenario with late event but no fee in ledge
 });
 
 test("over-limit AND-form rejects scenario without over-limit fee in ledger", async () => {
-  const { ir } = await scenariosFor(CC_PATH);
+  const { ir, contractText } = await scenariosFor(CC_PATH);
   const archetypes = archetypesFor("credit_card");
   const overLimit = archetypes.find((a) => a.id === "over-limit")!;
   const scenario = await generateScenario({
     ir,
+    contractText,
     archetype: overLimit,
     useLlm: false,
   });
