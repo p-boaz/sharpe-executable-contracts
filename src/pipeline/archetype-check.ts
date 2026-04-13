@@ -124,14 +124,21 @@ export function validateArchetype(
   }
 
   if (archetype.id === "baseline") {
-    const modeledIds = new Set(
-      ir.clauses.filter((c) => c.modeled).map((c) => c.id),
-    );
+    const modeledClauses = ir.clauses.filter((c) => c.modeled);
+    const modeledIds = new Set(modeledClauses.map((c) => c.id));
     const modeledFired = execution.ledger.some(
       (e) => typeof e.clauseId === "string" && modeledIds.has(e.clauseId),
     );
     if (!modeledFired) {
       return "baseline archetype requires at least one modeled clause to fire in execution";
+    }
+
+    const hasObligations = modeledClauses.some((c) => c.effect.kind === "obligation");
+    if (hasObligations) {
+      const metObligations = execution.obligations.filter((o) => o.status === "met");
+      if (metObligations.length === 0) {
+        return "baseline archetype requires at least one modeled obligation to be met in execution (bind an event via metadata.clauseId)";
+      }
     }
   }
 

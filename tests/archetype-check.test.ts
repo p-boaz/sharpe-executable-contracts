@@ -11,6 +11,8 @@ import { executeContract } from "../src/core/executor.js";
 import { validateArchetype } from "../src/pipeline/archetype-check.js";
 import { archetypesFor, contractFamily } from "../src/pipeline/archetypes.js";
 import type { Scenario } from "../src/types/scenario.js";
+import type { ContractIR } from "../src/types/ir.js";
+import type { ExecutionResult } from "../src/types/execution.js";
 
 const CC_PATH = join(
   process.cwd(),
@@ -137,4 +139,162 @@ test("baseline AND-form rejects execution with no modeled clause firing", async 
   const failure = validateArchetype(emptyScenario, baseline, emptyExecution, ir);
   assert.ok(failure, "baseline must require ≥1 modeled clause firing");
   assert.match(failure!, /modeled clause/);
+});
+
+test("baseline archetype rejects execution where no obligation is met", () => {
+  const ir: ContractIR = {
+    contractId: "test",
+    title: "Test",
+    currency: "USD",
+    parties: [],
+    definitions: [],
+    clauses: [
+      {
+        id: "clause.obligation.deliver",
+        title: "Deliver",
+        sourceText: "Seller shall deliver.",
+        modeled: true,
+        semanticTag: "delivery_obligation",
+        effect: { kind: "obligation", actor: "party.seller", action: "Deliver goods" },
+      },
+    ],
+    metadata: {
+      sourceFile: "x.md",
+      extractionHash: "h",
+      extractorVersion: "v",
+      clauseCount: 1,
+      modeledClauseCount: 1,
+      extraction: { llmRequested: true, llmUsed: true, mode: "llm" },
+    },
+  };
+  const scenario: Scenario = {
+    scenarioId: "s",
+    archetype: "baseline",
+    assumptions: [],
+    initialState: {},
+    events: [{ id: "e1", date: "2026-02-15", type: "delivery" }],
+  };
+  const execution: ExecutionResult = {
+    ledger: [
+      { id: "stmt-clause.obligation.deliver", date: "2026-02-15", kind: "statement", amount: 0, balanceAfter: 0, description: "Obligation due", clauseId: "clause.obligation.deliver" },
+    ],
+    obligations: [
+      { id: "o1", clauseId: "clause.obligation.deliver", dueDate: "2026-02-15", amountDue: 0, amountPaid: 0, status: "missed" },
+    ],
+    breaches: [],
+    summary: { endingBalance: 0, totalInterestCharged: 0, totalFeesCharged: 0, totalPaid: 0, breached: true },
+  };
+  const result = validateArchetype(
+    scenario,
+    { id: "baseline", label: "Baseline review", intent: "" },
+    execution,
+    ir,
+  );
+  assert.ok(result && /obligation.*met/i.test(result), `expected failure mentioning met-obligation, got: ${result}`);
+});
+
+test("baseline archetype passes when at least one obligation is met", () => {
+  const ir: ContractIR = {
+    contractId: "test",
+    title: "Test",
+    currency: "USD",
+    parties: [],
+    definitions: [],
+    clauses: [
+      {
+        id: "clause.obligation.deliver",
+        title: "Deliver",
+        sourceText: "Seller shall deliver.",
+        modeled: true,
+        semanticTag: "delivery_obligation",
+        effect: { kind: "obligation", actor: "party.seller", action: "Deliver goods" },
+      },
+    ],
+    metadata: {
+      sourceFile: "x.md",
+      extractionHash: "h",
+      extractorVersion: "v",
+      clauseCount: 1,
+      modeledClauseCount: 1,
+      extraction: { llmRequested: true, llmUsed: true, mode: "llm" },
+    },
+  };
+  const scenario: Scenario = {
+    scenarioId: "s",
+    archetype: "baseline",
+    assumptions: [],
+    initialState: {},
+    events: [{ id: "e1", date: "2026-02-15", type: "delivery", metadata: { clauseId: "clause.obligation.deliver" } }],
+  };
+  const execution: ExecutionResult = {
+    ledger: [
+      { id: "stmt-clause.obligation.deliver", date: "2026-02-15", kind: "statement", amount: 0, balanceAfter: 0, description: "Obligation due", clauseId: "clause.obligation.deliver" },
+    ],
+    obligations: [
+      { id: "o1", clauseId: "clause.obligation.deliver", dueDate: "2026-02-15", amountDue: 0, amountPaid: 0, status: "met" },
+    ],
+    breaches: [],
+    summary: { endingBalance: 0, totalInterestCharged: 0, totalFeesCharged: 0, totalPaid: 0, breached: false },
+  };
+  assert.equal(
+    validateArchetype(
+      scenario,
+      { id: "baseline", label: "Baseline review", intent: "" },
+      execution,
+      ir,
+    ),
+    null,
+  );
+});
+
+test("baseline archetype skips met-obligation check when IR has no modeled obligations", () => {
+  const ir: ContractIR = {
+    contractId: "test",
+    title: "Test",
+    currency: "USD",
+    parties: [],
+    definitions: [],
+    clauses: [
+      {
+        id: "clause.formula.apr",
+        title: "APR",
+        sourceText: "APR 7.9%.",
+        modeled: true,
+        semanticTag: "apr",
+        effect: { kind: "formula", outputVar: "apr_nominal", expr: { op: "const", value: 7.9 } },
+      },
+    ],
+    metadata: {
+      sourceFile: "x.md",
+      extractionHash: "h",
+      extractorVersion: "v",
+      clauseCount: 1,
+      modeledClauseCount: 1,
+      extraction: { llmRequested: true, llmUsed: true, mode: "llm" },
+    },
+  };
+  const scenario: Scenario = {
+    scenarioId: "s",
+    archetype: "baseline",
+    assumptions: [],
+    initialState: {},
+    events: [],
+  };
+  const execution: ExecutionResult = {
+    ledger: [
+      { id: "stmt-clause.formula.apr", date: "2026-01-01", kind: "statement", amount: 0, balanceAfter: 0, description: "formula", clauseId: "clause.formula.apr" },
+    ],
+    obligations: [],
+    breaches: [],
+    summary: { endingBalance: 0, totalInterestCharged: 0, totalFeesCharged: 0, totalPaid: 0, breached: false },
+  };
+  assert.equal(
+    validateArchetype(
+      scenario,
+      { id: "baseline", label: "Baseline review", intent: "" },
+      execution,
+      ir,
+    ),
+    null,
+  );
 });
