@@ -59,52 +59,6 @@ test("lease deterministic fallbacks pass AND-form validation", () => {
   }
 });
 
-test("late-payment AND-form rejects scenario with late event but no fee in ledger", () => {
-  const { ir, dir } = loadFixture(CC_FIXTURE);
-  const archetypes = archetypesFor("credit_card");
-  const late = archetypes.find((a) => a.id === "late-payment")!;
-  const scenario = loadScenario(dir, "late-payment");
-
-  const emptyExecution = {
-    ledger: [],
-    breaches: [],
-    obligations: [],
-    summary: {
-      endingBalance: 0,
-      totalInterestCharged: 0,
-      totalFeesCharged: 0,
-      totalPaid: 0,
-      breached: false,
-    },
-  };
-  const failure = validateArchetype(scenario, late, emptyExecution, ir);
-  assert.ok(failure, "expected AND-form to reject shape-only pass");
-  assert.match(failure!, /late-fee entry/);
-});
-
-test("over-limit AND-form rejects scenario without over-limit fee in ledger", () => {
-  const { ir, dir } = loadFixture(CC_FIXTURE);
-  const archetypes = archetypesFor("credit_card");
-  const overLimit = archetypes.find((a) => a.id === "over-limit")!;
-  const scenario = loadScenario(dir, "over-limit");
-
-  const emptyExecution = {
-    ledger: [],
-    breaches: [],
-    obligations: [],
-    summary: {
-      endingBalance: 0,
-      totalInterestCharged: 0,
-      totalFeesCharged: 0,
-      totalPaid: 0,
-      breached: false,
-    },
-  };
-  const failure = validateArchetype(scenario, overLimit, emptyExecution, ir);
-  assert.ok(failure, "expected AND-form to reject shape-only over-limit pass");
-  assert.match(failure!, /over-limit-fee entry/);
-});
-
 test("baseline AND-form rejects execution with no modeled clause firing", () => {
   const { ir } = loadFixture(CC_FIXTURE);
   const baseline = { id: "baseline", label: "Baseline", intent: "smoke test" };

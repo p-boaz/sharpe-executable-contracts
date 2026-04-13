@@ -3,19 +3,13 @@ import type { ExecutionResult } from "../types/execution.js";
 import type { ContractIR } from "../types/ir.js";
 import type { Archetype } from "./archetypes.js";
 
-// Resolve the id of a fee clause by semantic tag under the Path B IR.
-// `late_payment_fee` and `over_limit_fee` are the canonical credit-card tags
-// emitted by the heuristic extractor.
-function feeClauseId(ir: ContractIR, semanticTag: string): string | undefined {
-  return ir.clauses.find(
-    (c) => c.effect.kind === "payment" && c.semanticTag === semanticTag,
-  )?.id;
-}
-
-function hasFeeForClause(execution: ExecutionResult, clauseId: string | undefined): boolean {
-  if (!clauseId) return false;
-  return execution.ledger.some((e) => e.kind === "fee" && e.clauseId === clauseId);
-}
+// The validator only hard-fails on checks the LLM can plausibly repair by
+// rewriting scenario JSON: dates, amounts, event presence, and clauseId
+// bindings. Execution-outcome assertions (fee ledger rows, obligation
+// statuses, ending balance) used to live here, but retrying a scenario
+// cannot coerce the executor into firing a clause that isn't wired for the
+// IR shape, so those retries just burn budget. Downstream UI still surfaces
+// whatever the executor actually produced.
 
 export function validateArchetype(
   scenario: Scenario,
@@ -35,15 +29,6 @@ export function validateArchetype(
     if (!hasLatePayment) {
       return "late-payment archetype requires a payment event after dueDate";
     }
-    // Fee-shape checks are conditional on the IR actually modeling the fee.
-    // When the extractor misses `late_payment_fee`, we don't block scenario
-    // generation — the scenario is still semantically "late-payment" (there
-    // is a late payment event); we just can't assert on ledger fee rows
-    // that the executor has no clause to fire.
-    const lateFeeId = feeClauseId(ir, "late_payment_fee");
-    if (lateFeeId && !hasFeeForClause(execution, lateFeeId)) {
-      return "late-payment archetype requires execution ledger to contain a late-fee entry";
-    }
   }
 
   if (archetype.id === "over-limit") {
@@ -57,12 +42,6 @@ export function validateArchetype(
       .reduce((sum, e) => sum + (e.amount ?? 0), 0);
     if (purchaseTotal <= limit) {
       return `over-limit archetype requires purchases > creditLimit (purchases=${purchaseTotal}, limit=${limit})`;
-    }
-    // Same downgrade as late-payment: only assert the ledger fee row when
-    // the IR actually models `over_limit_fee`.
-    const overLimitFeeId = feeClauseId(ir, "over_limit_fee");
-    if (overLimitFeeId && !hasFeeForClause(execution, overLimitFeeId)) {
-      return "over-limit archetype requires execution ledger to contain an over-limit-fee entry";
     }
   }
 
@@ -85,10 +64,6 @@ export function validateArchetype(
         return "on-time archetype must not include a rent payment after rentDueDate";
       }
     }
-    const lateFeeId = feeClauseId(ir, "late_payment_fee");
-    if (lateFeeId && hasFeeForClause(execution, lateFeeId)) {
-      return "on-time archetype must not produce a late-fee ledger entry";
-    }
     const rentRaw = scenario.initialState.monthlyRent;
     const rent = typeof rentRaw === "number" ? rentRaw : undefined;
     if (rent !== undefined) {
@@ -97,12 +72,6 @@ export function validateArchetype(
         .reduce((sum, e) => sum + (e.amount ?? 0), 0);
       if (paymentTotal < rent) {
         return `on-time lease archetype requires full rent paid (payments=${paymentTotal}, rent=${rent})`;
-      }
-      const rentMet = execution.obligations.some(
-        (o) => o.status === "met" && o.amountDue >= rent,
-      );
-      if (execution.obligations.length > 0 && !rentMet) {
-        return "on-time lease archetype requires rent obligation status=met in execution";
       }
     }
   }
@@ -118,9 +87,6 @@ export function validateArchetype(
       .reduce((sum, e) => sum + (e.amount ?? 0), 0);
     if (paymentTotal <= 0 || paymentTotal >= rent) {
       return `partial-payment archetype requires 0 < payments < monthlyRent (payments=${paymentTotal}, rent=${rent})`;
-    }
-    if (execution.summary.endingBalance <= 0) {
-      return "partial-payment archetype requires unpaid balance carried forward (endingBalance > 0)";
     }
   }
 

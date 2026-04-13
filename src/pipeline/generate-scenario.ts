@@ -23,7 +23,12 @@ export interface GenerateAllScenariosOptions {
   contractText: string;
 }
 
-const SCENARIO_CONTRACT_PROMPT_CHAR_LIMIT = 12000;
+// Upper bound on contract-text chars included in the LLM user prompt.
+// gpt-5-mini has a 128K-token context window; at ~4 chars/token we can
+// safely carry ~80KB of contract while leaving room for the IR JSON,
+// binding guidance, repair section, and the output itself. Most contracts
+// in the repo are smaller than this cap and will not be truncated at all.
+const SCENARIO_CONTRACT_PROMPT_CHAR_LIMIT = 80000;
 const MAX_SCENARIO_ATTEMPTS = 3;
 
 const ScenarioSchema = z.object({
@@ -302,9 +307,11 @@ export function scenarioRequirements(archetype: Archetype, family: ContractFamil
   }
   if (archetype.id === "baseline") {
     return [
-      "Include at least one event that performs a modeled obligation clause (set metadata.clauseId to the obligation's clause id exactly as listed in the binding guidance below).",
-      "If no obligations are modeled, include at least one event that fires a modeled formula, payment, or accumulation clause.",
-      "Keep the timeline minimal: prefer 1–5 events, each with a real YYYY-MM-DD date.",
+      "Cover every modeled obligation clause that plausibly fits the scenario's narrative: emit one performing event per obligation and bind it via metadata.clauseId (exact id from the binding guidance below).",
+      "If an obligation genuinely cannot be performed inside this narrative (e.g. termination-on-default clauses when there is no default), state the reason in `assumptions` and skip it rather than faking an event.",
+      "If no obligations are modeled, include at least one event per modeled formula, payment, or accumulation clause so the executor produces non-empty ledger output.",
+      "Use real, sorted YYYY-MM-DD dates that form a coherent multi-month timeline. Do not impose a fixed event cap — scale event count to obligation count.",
+      "Include supporting context events (statement_close, due_check, notice) around the performing events where they clarify the timeline, but keep every event tied to something the executor or reader can reason about.",
     ];
   }
   return [
@@ -372,15 +379,14 @@ export async function generateAllScenarios(
 ): Promise<{ family: ContractFamily; scenarios: Scenario[] }> {
   const family = contractFamily(options.ir);
   const archetypes = archetypesFor(family);
-  const scenarios: Scenario[] = [];
-  for (const archetype of archetypes) {
-    scenarios.push(
-      await generateScenario({
+  const scenarios = await Promise.all(
+    archetypes.map((archetype) =>
+      generateScenario({
         ir: options.ir,
         contractText: options.contractText,
         archetype,
       }),
-    );
-  }
+    ),
+  );
   return { family, scenarios };
 }
