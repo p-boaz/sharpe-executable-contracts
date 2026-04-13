@@ -80,10 +80,15 @@ pipeline (`pnpm run run`) into `out/_web_runs/<contract-key>/`. A second
 route (`web/app/api/upload-contract`) accepts held-out `.md` uploads;
 `web/app/api/execute` re-runs execution only.
 
-Layout is three zones, top to bottom: **Inputs** (`contract.md` ↔
-`english.txt`), **Scenario**, **Execution**. The IR is available in a
-collapsible "Show representation" drawer. Hovering a ledger row or English
-clause line highlights its counterpart.
+Layout is a four-step vertical flow that mirrors the pipeline:
+**Step 1 · Contract → IR** (with a collapsible "Show intermediate
+representation" drawer exposing the raw IR clauses),
+**Step 2 · Generate and Pick a Scenario**,
+**Step 3 · Run the contract** (executor, no LLM),
+**Step 4 · Deterministic executable → English** (the regenerated
+`english.txt`, produced from IR + scenario + execution). Hovering a
+ledger row, an IR clause, or an English clause line highlights its
+counterparts across the other steps.
 
 1. `cd web && pnpm install`
 2. Ensure the Next.js process sees `OPENAI_API_KEY` (inherit from your
@@ -118,11 +123,13 @@ clause line highlights its counterpart.
 
 ## Limitations
 
-- Executor covers credit-card clauses end-to-end and a minimal lease
-  monthly-rent path. Engagement-letter, securities-exchange,
-  service-agreement, and employment contracts round-trip through IR and
-  decompilation but execute shallowly — most clauses land as
-  `modeled: false`.
+- Execution depth varies by contract family. Credit-card and lease are
+  exercised most deeply (APR-driven balances, fees, breach flags for
+  credit card; monthly-rent for lease). Other families
+  (securities-exchange, amendment, employment, engagement-letter,
+  service-agreement) extract and render cleanly with most clauses marked
+  `modeled: true`, but the generated scenarios exercise fewer clauses
+  end-to-end than the credit-card path.
 - LLM extraction is nondeterministic; IR/scenario/execution will drift
   run-to-run. Users who need stable IR should cache artifacts rather than
   re-extract.
