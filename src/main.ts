@@ -1,11 +1,15 @@
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import { decompileExecutionToEnglish } from "./core/decompiler.js";
 import { ensureDir, writeJson, writeText } from "./io/fs.js";
+import {
+  buildMeta,
+  contractIdFor,
+  hashText,
+  type ContractMeta,
+} from "./pipeline/meta.js";
 import { runPipeline, type ScenarioRun } from "./pipeline/run-pipeline.js";
 import type { ContractIR } from "./types/ir.js";
-import type { Scenario } from "./types/scenario.js";
 import { stableStringify } from "./util/json.js";
 
 interface CliOptions {
@@ -13,31 +17,6 @@ interface CliOptions {
   contractPath: string;
   outDir?: string;
   outRoot: string;
-}
-
-interface StageLlmStatus {
-  llmRequested: boolean;
-  llmUsed: boolean;
-  mode: string;
-}
-
-function hashText(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\.md$/, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
-
-function contractIdFor(ir: ContractIR, contractPath: string): string {
-  const fromIr = slugify(ir.contractId);
-  if (fromIr) return fromIr;
-  return slugify(basename(contractPath));
 }
 
 function loadDotEnvFromCwd(): void {
@@ -67,18 +46,6 @@ function ensureOpenAiKey(): void {
   throw new Error(
     "OPENAI_API_KEY is required. This repo now runs in LLM-required mode only.",
   );
-}
-
-function scenarioStageStatus(scenario: Scenario): StageLlmStatus {
-  const fromScenario = scenario.metadata?.generation;
-  if (fromScenario) {
-    return {
-      llmRequested: fromScenario.llmRequested,
-      llmUsed: fromScenario.llmUsed,
-      mode: fromScenario.mode,
-    };
-  }
-  return { llmRequested: true, llmUsed: true, mode: "llm" };
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -151,7 +118,7 @@ async function writeContractBundle(
   ir: ContractIR,
   english: string,
   runs: ScenarioRun[],
-  meta: Record<string, unknown>,
+  meta: ContractMeta,
 ): Promise<void> {
   await ensureDir(contractDir);
   await writeText(resolve(contractDir, "contract.md"), contractText);
@@ -173,46 +140,19 @@ async function writeContractBundle(
 async function runCommand(options: CliOptions): Promise<void> {
   const contractPath = resolve(process.cwd(), options.contractPath);
   const result = await runPipeline({ contractPath });
-  const extractionStage = result.ir.metadata.extraction;
   const contractId = contractIdFor(result.ir, contractPath);
 
   const contractDir = options.outDir
     ? resolve(process.cwd(), options.outDir)
     : resolve(process.cwd(), options.outRoot, contractId);
 
-  const scenarioStages = result.runs.map((run) => ({
-    archetype: run.archetype,
-    status: scenarioStageStatus(run.scenario),
-  }));
-
-  const irHash = hashText(stableStringify(result.ir));
-  const englishHash = hashText(result.english);
-
-  const meta = {
+  const meta = buildMeta({
     contractId,
-    title: result.ir.title,
-    sourceFile: result.ir.metadata.sourceFile,
+    ir: result.ir,
     family: result.family,
-    irHash,
-    englishHash,
-    generatedAt: new Date().toISOString(),
-    llmMode: {
-      required: true,
-      reason: "on (required)",
-    },
-    stages: {
-      extractIr: extractionStage,
-      generateScenario: scenarioStages,
-    },
-    scenarios: result.runs.map((run) => ({
-      archetype: run.archetype,
-      label: run.scenario.label ?? run.archetype,
-      scenarioId: run.scenario.scenarioId,
-      endingBalance: run.execution.summary.endingBalance,
-      breached: run.execution.summary.breached,
-      breachCount: run.execution.breaches.length,
-    })),
-  };
+    runs: result.runs,
+    english: result.english,
+  });
 
   await writeContractBundle(
     contractDir,
@@ -223,6 +163,8 @@ async function runCommand(options: CliOptions): Promise<void> {
     meta,
   );
 
+  const extractionStage = result.ir.metadata.extraction;
+  const scenarioStages = meta.stages.generateScenario ?? [];
   const summaryLines = [
     "Command: run",
     `Contract: ${options.contractPath}`,

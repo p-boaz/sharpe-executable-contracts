@@ -19,10 +19,10 @@ function isSafeSegment(value: string): boolean {
 }
 
 const EXECUTE_SCRIPT = [
-  'import { createHash } from "node:crypto";',
   'import { readFile } from "node:fs/promises";',
-  'import { decompileExecutionToEnglish } from "./src/core/decompiler.ts";',
   'import { executeContract } from "./src/core/executor.ts";',
+  'import { decompileRuns } from "./src/pipeline/run-pipeline.ts";',
+  'import { hashText } from "./src/pipeline/meta.ts";',
   "(async () => {",
   "  const [irPath, scenarioPath] = process.argv.slice(-2);",
   "  if (!irPath || !scenarioPath) throw new Error('Missing ir/scenario path');",
@@ -34,8 +34,8 @@ const EXECUTE_SCRIPT = [
   "  const scenario = JSON.parse(scenarioRaw);",
   "  const execution = executeContract(ir, scenario);",
   "  const archetype = scenario.archetype || scenario.scenarioId || 'selected';",
-  "  const english = decompileExecutionToEnglish(ir, [{ archetype, scenario, execution }]);",
-  "  const englishHash = createHash('sha256').update(english).digest('hex');",
+  "  const english = decompileRuns(ir, [{ archetype, scenario, execution }]);",
+  "  const englishHash = hashText(english);",
   "  process.stdout.write(JSON.stringify({ execution, english, englishHash }));",
   "})();",
 ].join("\n");

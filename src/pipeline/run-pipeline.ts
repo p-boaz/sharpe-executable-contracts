@@ -26,26 +26,52 @@ export interface RunPipelineResult {
   runs: ScenarioRun[];
 }
 
-export async function runPipeline(
+export interface ExtractContractResult {
+  contractText: string;
+  ir: ContractIR;
+  sourceFile: string;
+}
+
+export async function extractContract(
   options: RunPipelineOptions,
-): Promise<RunPipelineResult> {
+): Promise<ExtractContractResult> {
+  const sourceFile = basename(options.contractPath);
   const contractText = await readTextFile(options.contractPath);
-  const ir = await extractIr({
-    contractText,
-    sourceFile: basename(options.contractPath),
-  });
+  const ir = await extractIr({ contractText, sourceFile });
+  return { contractText, ir, sourceFile };
+}
 
-  const { family, scenarios } = await generateAllScenarios({
-    ir,
-    contractText,
-  });
+export interface GenerateRunsInput {
+  ir: ContractIR;
+  contractText: string;
+}
 
+export interface GenerateRunsResult {
+  family: ContractFamily;
+  runs: ScenarioRun[];
+}
+
+export async function generateRuns(
+  input: GenerateRunsInput,
+): Promise<GenerateRunsResult> {
+  const { family, scenarios } = await generateAllScenarios(input);
   const runs: ScenarioRun[] = scenarios.map((scenario) => ({
     archetype: scenario.archetype ?? scenario.scenarioId,
     scenario,
-    execution: executeContract(ir, scenario),
+    execution: executeContract(input.ir, scenario),
   }));
-  const english = decompileExecutionToEnglish(ir, runs);
+  return { family, runs };
+}
 
+export function decompileRuns(ir: ContractIR, runs: ScenarioRun[]): string {
+  return decompileExecutionToEnglish(ir, runs);
+}
+
+export async function runPipeline(
+  options: RunPipelineOptions,
+): Promise<RunPipelineResult> {
+  const { contractText, ir } = await extractContract(options);
+  const { family, runs } = await generateRuns({ ir, contractText });
+  const english = decompileRuns(ir, runs);
   return { contractText, ir, english, family, runs };
 }
