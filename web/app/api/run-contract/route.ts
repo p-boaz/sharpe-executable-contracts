@@ -12,11 +12,13 @@ import {
   generateRuns,
 } from "../../../../src/pipeline/run-pipeline.js";
 import { buildMeta } from "../../../../src/pipeline/meta.js";
+import { PRELOADED_FIXTURES } from "../../lib/preloaded";
 
 const REPO_ROOT = path.resolve(process.cwd(), "..");
 const CONTRACTS_DIR = path.join(REPO_ROOT, "contracts");
 const UPLOADED_DIR = path.join(CONTRACTS_DIR, "_uploaded");
-const WEB_RUNS_DIR = path.join(REPO_ROOT, "out", "_web_runs");
+const OUT_DIR = path.join(REPO_ROOT, "out");
+const WEB_RUNS_DIR = path.join(OUT_DIR, "_web_runs");
 
 interface RunContractRequest {
   action?: string;
@@ -148,6 +150,40 @@ async function runGenerateScenarios(
   return meta;
 }
 
+async function runLoadPreloaded(
+  outDir: string,
+  contractKey: string,
+): Promise<unknown> {
+  const fixtureDirName = PRELOADED_FIXTURES[contractKey];
+  if (!fixtureDirName) {
+    throw new Error("No preloaded bundle is available for this contract");
+  }
+  const fixtureDir = path.join(OUT_DIR, fixtureDirName);
+  try {
+    await fs.access(path.join(fixtureDir, "meta.json"));
+  } catch {
+    throw new Error(
+      `Preloaded bundle missing at out/${fixtureDirName}/meta.json`,
+    );
+  }
+
+  await fs.rm(outDir, { recursive: true, force: true });
+  await ensureDir(outDir);
+  await fs.cp(fixtureDir, outDir, { recursive: true });
+
+  // The bundle was generated under its own contractId; rewrite to the web
+  // runs key so the UI stays consistent when it reads meta.json directly.
+  const metaPath = path.resolve(outDir, "meta.json");
+  try {
+    const raw = JSON.parse(await readTextFile(metaPath)) as Record<string, unknown>;
+    raw.contractId = contractKey;
+    await writeJson(metaPath, raw);
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
@@ -161,7 +197,10 @@ export async function POST(request: Request) {
   const action = body.action?.trim();
   const contractKey = body.contractKey?.trim() ?? body.contractId?.trim();
 
-  if (!action || !["generate-ir", "generate-scenarios"].includes(action)) {
+  if (
+    !action ||
+    !["generate-ir", "generate-scenarios", "load-preloaded"].includes(action)
+  ) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
   if (!contractKey) {
@@ -199,6 +238,17 @@ export async function POST(request: Request) {
       });
     }
 
+    if (action === "load-preloaded") {
+      const meta = await runLoadPreloaded(outDir, contractKey);
+      return NextResponse.json({
+        ok: true,
+        action,
+        contractKey,
+        sourceFile,
+        meta,
+      });
+    }
+
     try {
       await fs.access(path.join(outDir, "ir.json"));
     } catch {
@@ -222,7 +272,9 @@ export async function POST(request: Request) {
         ? error.message
         : action === "generate-ir"
           ? "IR generation failed"
-          : "Scenario generation failed";
+          : action === "load-preloaded"
+            ? "Loading preloaded bundle failed"
+            : "Scenario generation failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

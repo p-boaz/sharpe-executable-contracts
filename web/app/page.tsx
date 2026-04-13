@@ -1,11 +1,22 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import Dossier from "./Dossier";
+import { PRELOADED_FIXTURES } from "./lib/preloaded";
 import type { ContractMeta, ContractOption, IR, RunResult, Scenario } from "./lib/types";
 
 const CONTRACTS_DIR = path.resolve(process.cwd(), "..", "contracts");
 const UPLOADED_DIR = path.resolve(CONTRACTS_DIR, "_uploaded");
-const WEB_RUNS_DIR = path.resolve(process.cwd(), "..", "out", "_web_runs");
+const OUT_DIR = path.resolve(process.cwd(), "..", "out");
+const WEB_RUNS_DIR = path.resolve(OUT_DIR, "_web_runs");
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function readJson<T>(p: string): Promise<T | null> {
   try {
@@ -54,14 +65,14 @@ function titleFromFileName(fileName: string): string {
 async function listContracts(): Promise<ContractOption[]> {
   const bundled = (await listMarkdownFiles(CONTRACTS_DIR))
     .filter((sourceFile) => sourceFile !== "SOURCES.md")
-    .map((sourceFile): Omit<ContractOption, "processed" | "irReady" | "scenariosReady"> => ({
+    .map((sourceFile): Omit<ContractOption, "processed" | "irReady" | "scenariosReady" | "hasPreloaded"> => ({
       key: slugify(sourceFile),
       sourceFile,
       title: titleFromFileName(sourceFile),
       origin: "bundled",
     }));
   const uploaded = (await listMarkdownFiles(UPLOADED_DIR)).map(
-    (sourceFile): Omit<ContractOption, "processed" | "irReady" | "scenariosReady"> => ({
+    (sourceFile): Omit<ContractOption, "processed" | "irReady" | "scenariosReady" | "hasPreloaded"> => ({
       key: slugify(sourceFile),
       sourceFile: path.posix.join("_uploaded", sourceFile),
       title: `${titleFromFileName(sourceFile)} (uploaded)`,
@@ -72,9 +83,13 @@ async function listContracts(): Promise<ContractOption[]> {
 
   const options: ContractOption[] = [];
   for (const contract of contracts) {
-    const [meta, ir] = await Promise.all([
+    const fixtureDirName = PRELOADED_FIXTURES[contract.key];
+    const [meta, ir, hasPreloaded] = await Promise.all([
       readJson<ContractMeta>(path.join(WEB_RUNS_DIR, contract.key, "meta.json")),
       readJson<IR>(path.join(WEB_RUNS_DIR, contract.key, "ir.json")),
+      fixtureDirName
+        ? fileExists(path.join(OUT_DIR, fixtureDirName, "meta.json"))
+        : Promise.resolve(false),
     ]);
     const scenariosReady = Boolean(meta && Array.isArray(meta.scenarios) && meta.scenarios.length > 0);
     options.push({
@@ -82,6 +97,7 @@ async function listContracts(): Promise<ContractOption[]> {
       processed: scenariosReady,
       irReady: Boolean(ir),
       scenariosReady,
+      hasPreloaded,
     });
   }
   return options;

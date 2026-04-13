@@ -187,6 +187,7 @@ export default function Dossier({
   const [irError, setIrError] = useState<string | null>(null);
   const [isGeneratingScenarios, setIsGeneratingScenarios] = useState(false);
   const [scenarioError, setScenarioError] = useState<string | null>(null);
+  const [isLoadingPreloaded, setIsLoadingPreloaded] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadFileName, setUploadFileName] = useState<string>("");
@@ -200,6 +201,7 @@ export default function Dossier({
     setIrError(null);
     setIsGeneratingScenarios(false);
     setScenarioError(null);
+    setIsLoadingPreloaded(false);
   }, [selectedContractKey, selectedArchetype]);
 
   useEffect(() => {
@@ -368,6 +370,37 @@ export default function Dossier({
       setIrError(error instanceof Error ? error.message : "IR generation failed");
     } finally {
       setIsGeneratingIr(false);
+    }
+  };
+
+  const loadPreloaded = async () => {
+    if (isLoadingPreloaded) return;
+    setIsLoadingPreloaded(true);
+    setScenarioError(null);
+    setIrError(null);
+    setRunError(null);
+    setLiveExecution(null);
+    try {
+      const response = await fetch("/api/run-contract", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "load-preloaded",
+          contractKey: selectedContractKey,
+        }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Loading preloaded bundle failed");
+      }
+      router.push(`/?contract=${encodeURIComponent(selectedContractKey)}`);
+      router.refresh();
+    } catch (error) {
+      setScenarioError(
+        error instanceof Error ? error.message : "Loading preloaded bundle failed",
+      );
+    } finally {
+      setIsLoadingPreloaded(false);
     }
   };
 
@@ -575,18 +608,31 @@ export default function Dossier({
             type="button"
             className="execute-button"
             onClick={generateScenarios}
-            disabled={!hasIrArtifacts || isGeneratingScenarios}
+            disabled={!hasIrArtifacts || isGeneratingScenarios || isLoadingPreloaded}
           >
             {isGeneratingScenarios ? "Generating Scenarios..." : "Generate Scenarios"}
           </button>
+          {selectedContract?.hasPreloaded ? (
+            <button
+              type="button"
+              className="execute-button"
+              onClick={loadPreloaded}
+              disabled={isGeneratingScenarios || isLoadingPreloaded}
+              title="Copy the committed hand-crafted bundle (IR, scenarios, executions, english) into this contract's web run."
+            >
+              {isLoadingPreloaded ? "Loading Preloaded..." : "Use Preloaded Bundle"}
+            </button>
+          ) : null}
           {scenarioError ? <span className="hint error">{scenarioError}</span> : null}
         </div>
         {scenarios.length === 0 ? (
           <div className="execute-prompt">
             <div className="hint">
-              {hasIrArtifacts
-                ? 'No scenario artifacts yet. Click "Generate Scenarios".'
-                : 'Generate IR first, then run "Generate Scenarios".'}
+              {selectedContract?.hasPreloaded
+                ? 'No scenario artifacts yet. Click "Use Preloaded Bundle" to load the committed hand-crafted bundle, or "Generate Scenarios" (requires an OpenAI key).'
+                : hasIrArtifacts
+                  ? 'No scenario artifacts yet. Click "Generate Scenarios".'
+                  : 'Generate IR first, then run "Generate Scenarios".'}
             </div>
           </div>
         ) : (
@@ -848,7 +894,7 @@ export default function Dossier({
               {(liveExecution?.obligations ?? []).map((o: Obligation) => (
                 <div
                   key={o.id}
-                  className={`obl ${o.status && o.status !== "met" ? "breach" : ""} ${linkClass(o.clauseId)}`}
+                  className={`obl ${o.status === "missed" ? "breach" : ""} ${linkClass(o.clauseId)}`}
                   {...linkHandlers(o.clauseId)}
                 >
                   <div>

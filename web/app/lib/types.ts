@@ -143,6 +143,7 @@ export interface ContractOption {
   irReady: boolean;
   scenariosReady: boolean;
   origin: "bundled" | "uploaded";
+  hasPreloaded: boolean;
 }
 
 export interface LedgerEntry {

@@ -13,6 +13,19 @@ try {
 const config: NextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: path.resolve(__dirname, ".."),
+  turbopack: {
+    resolveExtensions: [".ts", ".tsx", ".mdx", ".jsx", ".js", ".json"],
+    resolveAlias: {},
+  },
+  webpack: (webpackConfig) => {
+    webpackConfig.resolve = webpackConfig.resolve ?? {};
+    webpackConfig.resolve.extensionAlias = {
+      ...(webpackConfig.resolve.extensionAlias ?? {}),
+      ".js": [".ts", ".tsx", ".js"],
+      ".mjs": [".mts", ".mjs"],
+    };
+    return webpackConfig;
+  },
 };
 
 export default config;
