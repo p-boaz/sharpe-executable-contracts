@@ -1,0 +1,80 @@
+{
+  "scenarioId": "scenario_over_limit_statement_close_001",
+  "summary": "The cardholder makes purchases during a billing cycle that push the account balance above the credit limit by the statement closing date. The scenario includes the resulting statement close while leaving the later minimum-payment obligation unmet to probe over-limit behavior at statement close.",
+  "assumptions": [
+    "The account starts the cycle with a zero previous balance and no pending fees or credits.",
+    "The disclosed credit limit for this card account is $500.00.",
+    "All purchases are authorized card transactions and are posted within the same billing cycle before the statement closing date.",
+    "The credit union permits the purchases to post even though the resulting outstanding balance exceeds the credit limit, consistent with the agreement's statement that excess credit may be extended and repaid.",
+    "No payments are made before the statement close, so the new balance at statement close equals the sum of posted purchases.",
+    "The minimum payment obligation under clause.5.minimum_payment_obligation arises from the periodic statement generated at statement close, but this archetype focuses on the over-limit condition at statement close, so no payment is made by the later due date and the obligation is intentionally left unmet."
+  ],
+  "initialState": {
+    "creditLimit": 500,
+    "previousBalance": 0,
+    "cycleStartDate": "2025-01-01",
+    "statementClosingDate": "2025-01-31",
+    "paymentDueDate": "2025-02-25",
+    "currency": "USD"
+  },
+  "events": [
+    {
+      "id": "evt1",
+      "date": "2025-01-05",
+      "type": "purchase",
+      "amount": 220,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt2",
+      "date": "2025-01-14",
+      "type": "purchase",
+      "amount": 180,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt3",
+      "date": "2025-01-27",
+      "type": "purchase",
+      "amount": 160,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt4",
+      "date": "2025-01-31",
+      "type": "statement_close",
+      "amount": 560,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt5",
+      "date": "2025-02-25",
+      "type": "due_check",
+      "amount": 16.8,
+      "metadata": {
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt6",
+      "date": "2025-02-26",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

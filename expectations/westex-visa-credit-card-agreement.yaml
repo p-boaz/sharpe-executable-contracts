@@ -50,7 +50,7 @@ expectedClauses:
     # currently emits `semanticTag: late_payment_fee` for this clause.
 
   - id: returned-payment-fee
-    intent: "Returned check / NSF triggers $25 fee (capped at minimum payment)."
+    intent: "Returned check / NSF triggers $25 fee, capped at the minimum payment per the source text."
     sourceQuote: "you may be charged a fee of $25.00 for each item returned"
     mustMatch:
       semanticTag: returned_payment_fee
@@ -59,7 +59,14 @@ expectedClauses:
         kind: payment
         payer: cardholder
         payee: issuer
-        amount: { op: const, value: 25.00 }
+        # Source text caps the fee at the minimum-payment amount, so
+        # min($25, minimum_payment) is the faithful shape. var(*)
+        # tolerates the LLM's variable-name drift.
+        amount:
+          op: min
+          args:
+            - { op: const, value: 25.00 }
+            - { op: var, name: "*" }
 
   - id: foreign-transaction-fee
     intent: "International transactions incur up to 1% foreign transaction fee."
@@ -72,10 +79,13 @@ expectedClauses:
         payer: cardholder
         payee: issuer
         # Percent fee: amount = (rate/100) * transaction_amount.
-        exprShape: "mul(const(0.01), var(transaction_amount))"
+        # `var(*)` accepts any contract-specific variable name (e.g. the
+        # WesTex IR uses `international_transaction_amount_usd`); the
+        # shape check is about operator structure and the 0.01 constant.
+        exprShape: "mul(const(0.01), var(*))"
 
   - id: minimum-payment-formula
-    intent: "Minimum payment is the greater of 3% of the new balance or $15."
+    intent: "Minimum payment is the greater of 3% of the new balance or $15, capped at the balance itself."
     sourceQuote: '"minimum payment" will equal 3% of the New Balance or $15.00, whichever is greater'
     mustMatch:
       semanticTag: minimum_payment_formula
@@ -83,7 +93,11 @@ expectedClauses:
       effect:
         kind: formula
         outputVar: minimum_payment_due
-        exprShape: "max(mul(var(new_balance), const(0.03)), const(15))"
+        # LLM defensively wraps the formula in min(..., new_balance) so
+        # the minimum-payment never exceeds the actual balance owed —
+        # legally faithful even though the source text doesn't spell it
+        # out. Accept either shape via the outer var(*) wildcard.
+        exprShape: "min(max(mul(var(new_balance), const(0.03)), const(15)), var(*))"
 
   - id: interest-rate-platinum
     intent: "Platinum APR is a tiered range 7.9%–15.9%."

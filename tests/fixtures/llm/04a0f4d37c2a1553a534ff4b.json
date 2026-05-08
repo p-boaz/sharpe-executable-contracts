@@ -1,0 +1,71 @@
+{
+  "scenarioId": "scenario-over-limit-statement-close-001",
+  "summary": "The cardholder starts a billing cycle with no balance, makes purchases that push the account above the stated credit limit, and then reaches statement close while still over limit. The scenario is designed to probe over-limit behavior at statement close and then carries the balance into the due date with a minimum payment made afterward to bind the payment obligation clause.",
+  "assumptions": [
+    "The account begins with a zero previous balance and an active credit line.",
+    "The credit limit is $500, and all transactions are approved and posted before the statement closes even though the resulting balance exceeds that limit.",
+    "No interest, prior fees, credits, disputes, returned payments, or cash advances occur during this billing cycle, so the statement balance is driven only by the listed purchases.",
+    "Because this archetype focuses on being over the credit limit at statement close, the cardholder breaches the credit-limit obligation when the purchases post above the limit.",
+    "A post-statement payment event is included to reference the minimum-payment obligation clause, even though the core archetype outcome is already established at statement close.",
+    "The contract text contains an over-credit-limit fee provision in clause 7, but no obligation id for that fee was provided in the binding list, so the scenario models the triggering condition through statement close rather than binding a separate fee-performing event."
+  ],
+  "initialState": {
+    "currency": "USD",
+    "creditLimit": 500,
+    "previousBalance": 0,
+    "accountStatus": "open",
+    "billingCycleStart": "2025-01-01",
+    "statementCloseDay": "2025-01-31",
+    "paymentDueDate": "2025-02-25"
+  },
+  "events": [
+    {
+      "id": "evt-001-purchase",
+      "date": "2025-01-05",
+      "type": "purchase",
+      "amount": 300,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002-purchase",
+      "date": "2025-01-18",
+      "type": "purchase",
+      "amount": 260,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003-statement-close",
+      "date": "2025-01-31",
+      "type": "statement_close",
+      "amount": 560,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-004-due-check",
+      "date": "2025-02-25",
+      "type": "due_check",
+      "amount": 16.8,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-005-payment",
+      "date": "2025-02-25",
+      "type": "payment",
+      "amount": 16.8,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

@@ -92,6 +92,17 @@ export function validateArchetype(
 
   if (archetype.id === "baseline") {
     const modeledClauses = ir.clauses.filter((c) => c.modeled);
+
+    // Honest-zero posture: if the extractor produced no modeled clauses
+    // (contract is outside the closed-vocab archetypes), the scenario
+    // generator has nothing to exercise. Retrying cannot fix this — the
+    // LLM can't invent clauses the extractor rejected. Let the pipeline
+    // emit a truthful "no modeled clauses, baseline is a no-op review"
+    // artifact rather than crashing after 3 wasted retries.
+    if (modeledClauses.length === 0) {
+      return null;
+    }
+
     const modeledIds = new Set(modeledClauses.map((c) => c.id));
     const modeledFired = execution.ledger.some(
       (e) => typeof e.clauseId === "string" && modeledIds.has(e.clauseId),

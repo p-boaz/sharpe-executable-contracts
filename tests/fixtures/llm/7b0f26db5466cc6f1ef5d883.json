@@ -1,0 +1,86 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "This scenario covers a credit-card billing cycle where the cardholder makes purchases within the credit limit, receives a statement, and then makes a payment after the due date for less than the required minimum. It is designed to probe the late-payment path: the minimum-payment obligation is not timely satisfied, the account is delinquent at due check, and the late payment does not cure the shortfall for that cycle.",
+  "assumptions": [
+    "The statement closing date for this cycle is 2025-05-31 and the payment due date shown on that statement is 2025-06-25.",
+    "The previous statement balance was paid in full by its due date, so the issuer's 25-day grace-period obligation on new purchases is treated as applicable for this cycle.",
+    "The cardholder's credit limit is $1,000.00, and all spending in this scenario remains below that limit.",
+    "The new balance at statement close is $300.00, making the minimum payment $15.00 under the contract formula because 3% of $300.00 is $9.00 and the agreement requires the greater of 3% or $15.00.",
+    "The payment of $10.00 made on 2025-06-28 is posted and credited on the same date for scenario simplicity.",
+    "Because the only payment event tied to the minimum-payment obligation occurs after the due date and is below the $15.00 minimum, the archetype treats clause-5-minimum-payment-obligation as unmet for the cycle even though a partial payment is eventually posted.",
+    "A statement_close event is included and bound to the grace-period obligation to represent the issuer furnishing a statement and allowing a due date at least 25 days later; this scenario does not model actual interest computation."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "currentBalance": 0,
+    "statementBalance": 0,
+    "dueDate": "2025-06-25",
+    "previousStatementPaidInFull": true,
+    "minimumPaymentDue": 15
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-05-10",
+      "type": "purchase",
+      "amount": 120,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-05-18",
+      "type": "purchase",
+      "amount": 180,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-05-31",
+      "type": "statement_close",
+      "amount": 300,
+      "metadata": {
+        "clauseId": "clause-6-grace-period-obligation",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-06-25",
+      "type": "due_check",
+      "amount": 15,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-06-26",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-issuer",
+        "note": "Late payment fee may be assessed after missed due date; included as narrative notice, not as a modeled obligation performer."
+      }
+    },
+    {
+      "id": "evt-006",
+      "date": "2025-06-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

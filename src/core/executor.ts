@@ -1,10 +1,11 @@
 import { evaluateExpr } from "./eval-expr.js";
 import { evaluateBoolExpr } from "./eval-bool.js";
+import { resolveTermToDate } from "./definition-resolver.js";
 import { matchEventToObligation } from "./match-obligation.js";
 import { addBusinessDays, addCalendarDays, daysBetween } from "../util/date.js";
 import { max, round2 } from "../util/math.js";
 import type { ExecutionResult, Breach, LedgerEntry } from "../types/execution.js";
-import type { BoolExpr, Clause, ContractIR, TemporalRule } from "../types/ir.js";
+import type { BoolExpr, Clause, ContractIR, KnownSemanticTag, TemporalRule } from "../types/ir.js";
 import type { Scenario } from "../types/scenario.js";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -50,6 +51,14 @@ function primitiveState(
     }
   }
   return result;
+}
+
+function numericEnv(state: Scenario["initialState"]): Record<string, number> {
+  const env: Record<string, number> = {};
+  for (const [key, value] of Object.entries(state)) {
+    if (typeof value === "number" && Number.isFinite(value)) env[key] = value;
+  }
+  return env;
 }
 
 function numberState(
@@ -120,7 +129,7 @@ function conditionIsMet(condition: BoolExpr | undefined, scenario: Scenario): bo
   return evaluateBoolExpr(condition, primitiveState(scenario.initialState));
 }
 
-function isLeaseScenario(ir: ContractIR, scenario: Scenario): boolean {
+export function isLeaseScenario(ir: ContractIR, scenario: Scenario): boolean {
   const family = scenario.initialState.contractFamily;
   if (family === "lease") return true;
 
@@ -128,7 +137,7 @@ function isLeaseScenario(ir: ContractIR, scenario: Scenario): boolean {
     (clause) =>
       isObligationClause(clause) &&
       clause.modeled &&
-      clause.id === "clause.obligation.monthly_rent",
+      clause.semanticTag === ("rent_obligation" satisfies KnownSemanticTag),
   );
 }
 
@@ -150,16 +159,16 @@ function executeLeaseContract(
   const monthlyRent = round2(
     numberState(scenario.initialState, "monthlyRent", monthlyRentFromIr(ir)),
   );
-  const lateFee = findPaymentAmount(ir, "late_payment_fee");
+  const lateFee = findPaymentAmount(ir, "late_payment_fee" satisfies KnownSemanticTag);
   const lateFeeClauseId = findClauseId(
     ir,
-    (clause) => isPaymentClause(clause) && clause.semanticTag === "late_payment_fee",
+    (clause) => isPaymentClause(clause) && clause.semanticTag === ("late_payment_fee" satisfies KnownSemanticTag),
   );
   const rentObligationClause = ir.clauses.find(
     (clause): clause is ClauseWithObligation =>
       isObligationClause(clause) &&
       clause.modeled &&
-      clause.id === "clause.obligation.monthly_rent",
+      clause.semanticTag === ("rent_obligation" satisfies KnownSemanticTag),
   );
   const rentClauseId = rentObligationClause?.id || "clause.obligation.monthly_rent";
   const rentDueDate = stringState(
@@ -342,29 +351,48 @@ function pushBreach(
   list.push(base);
 }
 
-function isCreditCardScenario(ir: ContractIR, scenario: Scenario): boolean {
+export function isCreditCardScenario(ir: ContractIR, scenario: Scenario): boolean {
   if (scenario.initialState.contractFamily === "credit-card") return true;
   const hasMinPaymentObligation = ir.clauses.some(
-    (clause) => isObligationClause(clause) && clause.id === "clause.obligation.minimum_payment",
+    (clause) =>
+      isObligationClause(clause) &&
+      clause.semanticTag === ("minimum_payment_obligation" satisfies KnownSemanticTag),
   );
   const hasMinPaymentFormula = ir.clauses.some(
-    (clause) => isFormulaClause(clause) && clause.effect.outputVar === "minimum_payment_due",
+    (clause) =>
+      (isFormulaClause(clause) &&
+        clause.semanticTag === ("minimum_payment_formula" satisfies KnownSemanticTag)) ||
+      (isFormulaClause(clause) && clause.effect.outputVar === "minimum_payment_due"),
   );
   const hasLatePaymentFee = ir.clauses.some(
-    (clause) => isPaymentClause(clause) && clause.semanticTag === "late_payment_fee",
+    (clause) => isPaymentClause(clause) && clause.semanticTag === ("late_payment_fee" satisfies KnownSemanticTag),
   );
   return hasMinPaymentObligation || (hasLatePaymentFee && hasMinPaymentFormula);
 }
 
-function resolveDueDate(rule: TemporalRule, contractStart: string): string {
-  if (rule.type === "on_date" && typeof rule.value === "string") return rule.value;
+function resolveDueDate(
+  rule: TemporalRule,
+  contractStart: string,
+  ir?: ContractIR,
+): string {
+  if (rule.type === "on_date" && typeof rule.value === "string") {
+    // Try to resolve symbolic anchors ("closing_date", "effective_date")
+    // against the definitions table. Fall back to the symbolic string so
+    // the obligation status surface stays truthful (§executeGenericContract
+    // converts non-ISO due-dates to "pending", not "missed").
+    if (ir && !ISO_DATE.test(rule.value)) {
+      const resolved = resolveTermToDate(rule.value, ir);
+      if (resolved) return resolved;
+    }
+    return rule.value;
+  }
   const anchor = rule.anchor === "contractEnd" ? contractStart : contractStart;
   const days = typeof rule.value === "number" ? rule.value : 0;
   if (rule.type === "business_days") return addBusinessDays(anchor, days);
   return addCalendarDays(anchor, days);
 }
 
-function executeGenericObligations(
+function executeGenericContract(
   ir: ContractIR,
   scenario: Scenario,
   events: Scenario["events"],
@@ -376,6 +404,51 @@ function executeGenericObligations(
   const contractStart =
     stringState(scenario.initialState, "contractStart", events[0]?.date || "2026-01-01");
 
+  // Scheduled payment statements: every modeled `payment` clause with a
+  // resolvable const amount produces a dated ledger entry. Percent/variable
+  // formulas without scenario bindings emit a $0 placeholder so the clause
+  // still shows as planned activity rather than disappearing.
+  const modeledPayments = ir.clauses.filter(
+    (c): c is ClauseWithPayment => isPaymentClause(c) && c.modeled,
+  );
+  for (const [index, clause] of modeledPayments.entries()) {
+    if (!conditionIsMet(clause.condition, scenario)) continue;
+    const amount = evaluateExpr(clause.effect.amount, numericEnv(scenario.initialState));
+    ledger.push(
+      asLedger(
+        `stmt-payment-${index + 1}-${clause.id}`,
+        contractStart,
+        "statement",
+        amount,
+        0,
+        `Scheduled payment: ${clause.effect.payer} → ${clause.effect.payee} (${clause.semanticTag})`,
+        clause.id,
+      ),
+    );
+  }
+
+  // Definitional formulas resolvable from scenario.initialState emit a
+  // statement entry carrying the computed value. Unresolved formulas (vars
+  // missing from initialState) just log the intent.
+  const modeledFormulas = ir.clauses.filter(
+    (c): c is ClauseWithFormula => isFormulaClause(c) && c.modeled,
+  );
+  for (const [index, clause] of modeledFormulas.entries()) {
+    if (!conditionIsMet(clause.condition, scenario)) continue;
+    const value = evaluateExpr(clause.effect.expr, numericEnv(scenario.initialState));
+    ledger.push(
+      asLedger(
+        `stmt-formula-${index + 1}-${clause.id}`,
+        contractStart,
+        "statement",
+        Number.isFinite(value) ? value : 0,
+        0,
+        `Computed ${clause.effect.outputVar} = ${Number.isFinite(value) ? value : "<needs scenario vars>"} (${clause.semanticTag})`,
+        clause.id,
+      ),
+    );
+  }
+
   const modeledObligations = ir.clauses.filter(
     (c): c is ClauseWithObligation => isObligationClause(c) && c.modeled,
   );
@@ -386,7 +459,7 @@ function executeGenericObligations(
 
     const obligation = clause.effect;
     const dueRule = obligation.due || { type: "on_date" as const, value: "see_source_text" };
-    const dueDate = resolveDueDate(dueRule, contractStart);
+    const dueDate = resolveDueDate(dueRule, contractStart, ir);
     resolvedDueDates.set(clause.id, dueDate);
 
     obligations.push({
@@ -437,8 +510,8 @@ function executeGenericObligations(
         event.id,
         event.date,
         "notice",
-        0,
-        0,
+        event.amount ?? 0,
+        0, // balanceAfter filled in by the accumulation pass below
         matchedClauseId
           ? `Event ${event.id} performed obligation ${matchedClauseId}`
           : `Event ${event.id} recorded (no obligation matched)`,
@@ -466,6 +539,23 @@ function executeGenericObligations(
     );
   }
 
+  // Accumulation pass: walk the ledger in chronological order, track a
+  // running balance, and backfill each entry's balanceAfter. Statement rows
+  // (scheduled charges) raise the balance; notice rows with a positive amount
+  // are payments that reduce it. This mirrors the lease/credit-card executors
+  // which perform their own inline balance math.
+  let runningBalance = 0;
+  let totalPaid = 0;
+  for (const entry of ledger) {
+    if (entry.kind === "statement" && entry.amount > 0) {
+      runningBalance += entry.amount; // scheduled charge raises the balance
+    } else if (entry.kind === "notice" && entry.amount > 0) {
+      runningBalance = Math.max(0, runningBalance - entry.amount);
+      totalPaid += entry.amount;
+    }
+    entry.balanceAfter = round2(runningBalance);
+  }
+
   return {
     ledger,
     breaches,
@@ -481,10 +571,10 @@ function executeGenericObligations(
       status: o.status === "open" ? "pending" : o.status,
     })),
     summary: {
-      endingBalance: 0,
+      endingBalance: round2(runningBalance),
       totalInterestCharged: 0,
       totalFeesCharged: 0,
-      totalPaid: 0,
+      totalPaid: round2(totalPaid),
       breached: breaches.length > 0,
     },
   };
@@ -502,7 +592,7 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
   }
 
   if (!isCreditCardScenario(ir, scenario)) {
-    return executeGenericObligations(ir, scenario, events);
+    return executeGenericContract(ir, scenario, events);
   }
 
   const ledger: LedgerEntry[] = [];
@@ -516,22 +606,24 @@ export function executeContract(ir: ContractIR, scenario: Scenario): ExecutionRe
     typeof aprFormulaValue === "number" ? aprFormulaValue : 7.9,
   );
   const dailyRate = apr / 100 / 365;
-  const lateFee = findPaymentAmount(ir, "late_payment_fee");
-  const overLimitFee = findPaymentAmount(ir, "over_limit_fee");
+  const lateFee = findPaymentAmount(ir, "late_payment_fee" satisfies KnownSemanticTag);
+  const overLimitFee = findPaymentAmount(ir, "over_limit_fee" satisfies KnownSemanticTag);
   const creditLimit = numberState(scenario.initialState, "creditLimit", 0);
   const statementDate = stringState(scenario.initialState, "statementDate", "2026-01-31");
   const dueDate = stringState(scenario.initialState, "dueDate", "2026-02-25");
   const minimumPaymentClauseId = findClauseId(
     ir,
-    (c) => isObligationClause(c) && c.id === "clause.obligation.minimum_payment",
+    (c) =>
+      isObligationClause(c) &&
+      c.semanticTag === ("minimum_payment_obligation" satisfies KnownSemanticTag),
   );
   const lateFeeClauseId = findClauseId(
     ir,
-    (c) => isPaymentClause(c) && c.semanticTag === "late_payment_fee",
+    (c) => isPaymentClause(c) && c.semanticTag === ("late_payment_fee" satisfies KnownSemanticTag),
   );
   const overLimitClauseId = findClauseId(
     ir,
-    (c) => isPaymentClause(c) && c.semanticTag === "over_limit_fee",
+    (c) => isPaymentClause(c) && c.semanticTag === ("over_limit_fee" satisfies KnownSemanticTag),
   );
   const paymentDefaultClauseId = findPaymentDefaultClauseId(ir);
 

@@ -1,0 +1,101 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A cardholder makes ordinary charges during the billing cycle, receives a statement with a due date, and then submits a payment after that due date for less than the required minimum. The scenario is designed to probe the late-payment path while keeping the account within its credit limit and reflecting that the grace-period obligation is not satisfied once the prior statement was not paid in full by its due date.",
+  "assumptions": [
+    "The billing cycle closes on 2025-03-31 and the statement sets a payment due date of 2025-04-25.",
+    "The prior statement balance was not paid in full by its due date, so under the contract there is no grace period for new purchases in this cycle.",
+    "The new balance on the 2025-03-31 statement is $800.00, making the contractual minimum payment $24.00 (3% of $800.00, which is greater than $15.00).",
+    "The cardholder posts a single payment of $10.00 on 2025-04-28, which is both after the due date and below the required minimum, so the minimum-payment obligation is unmet and the late-payment path is triggered.",
+    "All transactions in this scenario remain within the $1000.00 credit limit, so the credit-limit obligation is observed rather than breached.",
+    "A statement_close event is used to represent issuance of the periodic statement that fixes the due date and minimum payment for the cycle.",
+    "Because this archetype focuses on cardholder late payment, the issuer's grace-period obligation is referenced by a notice event documenting that no grace period applies in this cycle due to the prior balance not being paid in full by the previous due date."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 200,
+    "aprPurchases": 0.109,
+    "statementBalance": 800,
+    "minimumPaymentDue": 24,
+    "dueDate": "2025-04-25",
+    "previousStatementPaidInFull": false
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-03-05",
+      "type": "purchase",
+      "amount": 250,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-03-12",
+      "type": "cash_advance",
+      "amount": 150,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-03-20",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 800,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder",
+        "newBalance": 800,
+        "minimumPayment": 24,
+        "paymentDueDate": "2025-04-25"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-04-01",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause-6-grace-period",
+        "actor": "party-issuer",
+        "message": "Because the previous statement was not paid in full by its due date, no grace period applies to new purchases in this cycle."
+      }
+    },
+    {
+      "id": "evt-006",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 24,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder",
+        "status": "unpaid_by_due_date"
+      }
+    },
+    {
+      "id": "evt-007",
+      "date": "2025-04-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

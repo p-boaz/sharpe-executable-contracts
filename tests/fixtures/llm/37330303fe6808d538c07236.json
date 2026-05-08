@@ -1,0 +1,69 @@
+{
+  "scenarioId": "credit_card_over_limit_statement_close_001",
+  "summary": "A cardholder starts a billing cycle with no prior balance, makes purchases that push the account above its $1,000 credit limit, and reaches statement close while still over limit. The scenario is designed to probe over-limit behavior at statement close while also including the modeled minimum-payment and grace-period obligations in the timeline.",
+  "assumptions": [
+    "The account begins a new billing cycle with a previous balance of $0.00, so the contract's purchase grace-period condition based on 'no previous balance' is satisfied.",
+    "The issuer allows purchases to post even though the cardholder's use causes the outstanding balance to exceed the credit limit; this scenario tests the over-limit condition at statement close rather than transaction decline behavior.",
+    "No fees or interest are posted during this billing cycle before statement close, so the statement-date balance is determined solely by the listed purchases.",
+    "The statement generated on 2025-01-31 shows a New Balance of $1,150.00; under the contract's formula, the minimum payment is 3% of $1,150.00 = $34.50, which is greater than $15.00.",
+    "To include all modeled obligations named in the prompt, this scenario includes a due-date payment event satisfying clause.5.minimum_payment_obligation after statement close, even though the archetype's core outcome is the over-limit status at statement close.",
+    "To include the modeled grace-period obligation, the statement-close event is also used to represent that the issuer has allowed at least 25 days before imposing purchase interest, consistent with a cycle that began on 2025-01-01 and closed on 2025-01-31."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "cycleStart": "2025-01-01",
+    "statementCloseDay": "2025-01-31",
+    "paymentDueDate": "2025-02-25",
+    "aprPurchases": 0.109,
+    "cardholderId": "party-cardholder",
+    "issuerId": "party-issuer"
+  },
+  "events": [
+    {
+      "id": "ev1",
+      "date": "2025-01-05",
+      "type": "purchase",
+      "amount": 600,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "ev2",
+      "date": "2025-01-12",
+      "type": "purchase",
+      "amount": 550,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "ev3",
+      "date": "2025-01-31",
+      "type": "statement_close",
+      "amount": 1150,
+      "metadata": {
+        "clauseId": "clause.6.grace_period",
+        "actor": "party-issuer",
+        "newBalance": 1150,
+        "minimumPayment": 34.5,
+        "overLimit": true
+      }
+    },
+    {
+      "id": "ev4",
+      "date": "2025-02-25",
+      "type": "payment",
+      "amount": 34.5,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

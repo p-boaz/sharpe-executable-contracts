@@ -1,0 +1,71 @@
+{
+  "scenarioId": "scenario-over-limit-statement-close-001",
+  "summary": "The cardholder starts a billing cycle with no balance, makes purchases that push the account above its $1,000 credit limit, and then reaches statement close while still over limit. The scenario is designed to probe over-limit behavior at statement close while also including a later minimum-payment due check where the cardholder does not pay.",
+  "assumptions": [
+    "The account is open, the card has already been issued, and the disclosed credit limit for this cycle is $1000.",
+    "All purchases in this scenario are authorized, valid card uses, and are posted in the same billing cycle before the statement closes.",
+    "The issuer permits the over-limit purchases to post rather than declining them, so the account can be above the credit limit at statement close.",
+    "No prior balance, fees, interest charges, credits, disputes, or cash advances exist at the start of the cycle.",
+    "The statement closes on 2026-05-31 and a payment due date of 2026-06-25 is shown on that statement.",
+    "To satisfy the requirement to include modeled obligations, the purchase events are bound to clause.4.credit_limits even though this archetype intentionally depicts that obligation being breached by exceeding the limit.",
+    "The minimum payment obligation in clause.5.minimum_payment_obligation is included via a due-check event rather than a successful payment event, because this over-limit archetype focuses on statement-close status and treats the later payment obligation as unmet."
+  ],
+  "initialState": {
+    "contractId": "WesTex-VISA-credit-card-agreement",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "cycleStart": "2026-05-01",
+    "accountStatus": "open"
+  },
+  "events": [
+    {
+      "id": "evt1",
+      "date": "2026-05-03",
+      "type": "purchase",
+      "amount": 650,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt2",
+      "date": "2026-05-18",
+      "type": "purchase",
+      "amount": 500,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt3",
+      "date": "2026-05-31",
+      "type": "statement_close",
+      "amount": 1150,
+      "metadata": {
+        "actor": "party-credit_union",
+        "statementNewBalance": 1150,
+        "creditLimit": 1000,
+        "overLimit": true,
+        "overLimitAmount": 150,
+        "paymentDueDate": "2026-06-25",
+        "minimumPayment": 34.5
+      }
+    },
+    {
+      "id": "evt4",
+      "date": "2026-06-25",
+      "type": "due_check",
+      "amount": 34.5,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder",
+        "requiredMinimumPayment": 34.5,
+        "actualPayment": 0,
+        "status": "unmet"
+      }
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "scenarioId": "credit-card-on-time-full-payment-001",
+  "summary": "A single billing cycle includes ordinary card use that stays below the credit limit, then the statement closes and the cardholder pays the full statement balance before the due date. The scenario probes a clean on-time outcome where the minimum-payment obligation is satisfied, and neither a late fee nor an over-limit fee should apply.",
+  "assumptions": [
+    "The billing cycle closes on 2025-03-31 and the payment due date for that statement is 2025-04-25.",
+    "The account had no previous balance at the start of this cycle, so the new balance is determined only by the transactions listed in this scenario.",
+    "A $300.00 purchase and a $200.00 cash advance both post during the cycle, producing a statement new balance of $500.00 before any interest or fees.",
+    "The account credit limit is $1000.00, so the outstanding balance never exceeds the limit and clause-4-credit-limits is satisfied throughout the scenario.",
+    "For this archetype, the cardholder chooses to pay the entire new balance rather than only the minimum; this also satisfies the minimum-payment obligation in clause-5-minimum-payment-obligation.",
+    "No returned payment, illegal use, foreign transaction, disputed charge, or other fee-triggering event occurs in this scenario.",
+    "The due_check event is an observational system check included to confirm that payment was made on or before the due date and that no late fee or over-limit fee should be assessed."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "statementBalance": 0,
+    "dueDate": "2025-04-25",
+    "billingCycleStart": "2025-03-01",
+    "billingCycleEnd": "2025-03-31",
+    "aprPurchases": "7.9-15.9%",
+    "aprCashAdvances": "7.9-15.9%"
+  },
+  "events": [
+    {
+      "id": "evt-1",
+      "date": "2025-03-05",
+      "type": "purchase",
+      "amount": 300,
+      "metadata": {
+        "clauseId": "clause-4-credit-limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-2",
+      "date": "2025-03-12",
+      "type": "cash_advance",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause-4-credit-limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-3",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 500,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-4",
+      "date": "2025-04-20",
+      "type": "payment",
+      "amount": 500,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-5",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "scenarioId": "credit-card-on-time-full-payment-001",
+  "summary": "A single purchase posts during the billing cycle, the statement closes with a balance well below the credit limit, and the cardholder pays the full statement balance before the due date. This exercises timely satisfaction of the minimum-payment obligation while also showing compliance with the credit-limit promise, so no late fee or over-limit fee should apply.",
+  "assumptions": [
+    "The account has no previous balance at the start of this billing cycle, so the statement's new balance is determined entirely by the transactions in this cycle.",
+    "The credit limit is $1000.00, and the single purchase in this scenario keeps the account below that limit at all times.",
+    "The statement for this cycle closes on 2025-05-31 and sets a payment due date of 2025-06-25, which is at least 25 days later and consistent with the contract's purchase grace-period language.",
+    "The minimum payment for a $200.00 new balance is $15.00 under the contract formula, but the cardholder instead pays the full $200.00 by the due date.",
+    "The payment is made through an approved standard payment channel and is credited on the date received, with no returned payment and no posting delay.",
+    "No cash advances, foreign transactions, disputed charges, expedited payment fees, late-payment fee triggers, or over-credit-limit conditions occur in this scenario."
+  ],
+  "initialState": {
+    "contractId": "WesTex-VISA-credit-card-agreement",
+    "accountId": "acct-001",
+    "currency": "USD",
+    "statementStartDate": "2025-05-01",
+    "statementCloseDate": "2025-05-31",
+    "dueDate": "2025-06-25",
+    "previousBalance": 0,
+    "creditLimit": 1000,
+    "aprPurchases": 0.079,
+    "newBalanceAtStart": 0,
+    "minimumPaymentDue": 15
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-05-10",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-05-31",
+      "type": "statement_close",
+      "amount": 200,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-06-20",
+      "type": "payment",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-06-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    }
+  ]
+}

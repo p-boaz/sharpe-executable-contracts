@@ -26,13 +26,13 @@ export interface RunPipelineResult {
   runs: ScenarioRun[];
 }
 
-export interface ExtractContractResult {
+interface ExtractContractResult {
   contractText: string;
   ir: ContractIR;
   sourceFile: string;
 }
 
-export async function extractContract(
+async function extractContract(
   options: RunPipelineOptions,
 ): Promise<ExtractContractResult> {
   const sourceFile = basename(options.contractPath);
@@ -41,17 +41,17 @@ export async function extractContract(
   return { contractText, ir, sourceFile };
 }
 
-export interface GenerateRunsInput {
+interface GenerateRunsInput {
   ir: ContractIR;
   contractText: string;
 }
 
-export interface GenerateRunsResult {
+interface GenerateRunsResult {
   family: ContractFamily;
   runs: ScenarioRun[];
 }
 
-export async function generateRuns(
+async function generateRuns(
   input: GenerateRunsInput,
 ): Promise<GenerateRunsResult> {
   const { family, scenarios } = await generateAllScenarios(input);
@@ -63,21 +63,11 @@ export async function generateRuns(
   return { family, runs };
 }
 
-/**
- * Imported by name (as a string literal) from the subprocess template in
- * `web/app/api/execute/route.ts` — static analyzers like knip cannot see
- * that reference, so this export must be retained.
- * @public
- */
-export function decompileRuns(ir: ContractIR, runs: ScenarioRun[]): string {
-  return decompileExecutionToEnglish(ir, runs);
-}
-
 export async function runPipeline(
   options: RunPipelineOptions,
 ): Promise<RunPipelineResult> {
   const { contractText, ir } = await extractContract(options);
   const { family, runs } = await generateRuns({ ir, contractText });
-  const english = decompileRuns(ir, runs);
+  const english = decompileExecutionToEnglish(ir, runs);
   return { contractText, ir, english, family, runs };
 }

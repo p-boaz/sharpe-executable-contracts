@@ -12,7 +12,7 @@ import type { ExecutionResult } from "../src/types/execution.js";
 // Tests read checked-in cached artifacts under out/<contractId>/ so they
 // run offline. Re-generate with `pnpm run run --contract <path> --out
 // out/<contractId>` after material extractor/scenario changes.
-const CC_FIXTURE = join(process.cwd(), "out/credit-card-agreement");
+const CC_FIXTURE = join(process.cwd(), "out/westex-visa-credit-card-agreement");
 const LEASE_FIXTURE = join(
   process.cwd(),
   "out/galleria-atlanta-office-lease-american-safety-insurance-2006",

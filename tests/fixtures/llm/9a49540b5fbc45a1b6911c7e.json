@@ -1,0 +1,71 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A billing cycle closes with a purchase balance, the statement sets a minimum payment and due date, and the cardholder makes only a small payment after the due date. This scenario exercises the late-payment path by showing that the minimum payment obligation is not satisfied on time, while still including events bound to the modeled credit-limit and grace-period clauses.",
+  "assumptions": [
+    "The billing cycle closes on 2025-03-31 with a new balance of $600.00 and a statement minimum payment of $18.00, based on the contract's 3% formula.",
+    "The payment due date shown on the statement is 2025-04-25, satisfying the agreement's at-least-25-days grace period for purchases after the 2025-03-31 statement close.",
+    "The cardholder had no previous balance carried into this cycle, so the issuer's grace-period obligation is treated as applicable and satisfied by providing a due date 25 days after statement close.",
+    "The account credit limit is $1000.00, and the purchase in this scenario does not cause the outstanding balance to exceed that limit.",
+    "The late-payment archetype focuses on a payment posted after the due date and below the minimum; therefore the minimum payment obligation is treated as unmet as of the due check even though a partial payment is eventually posted."
+  ],
+  "initialState": {
+    "accountBalance": 0,
+    "creditLimit": 1000,
+    "dueDate": "2025-04-25",
+    "statementClosingDate": "2025-03-31",
+    "previousBalance": 0,
+    "newBalance": 600,
+    "minimumPayment": 18
+  },
+  "events": [
+    {
+      "id": "evt1",
+      "date": "2025-03-10",
+      "type": "purchase",
+      "amount": 600,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt2",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 600,
+      "metadata": {
+        "clauseId": "clause.6.grace_period_obligation",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt3",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 18,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt4",
+      "date": "2025-04-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt5",
+      "date": "2025-04-28",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-issuer"
+      }
+    }
+  ]
+}

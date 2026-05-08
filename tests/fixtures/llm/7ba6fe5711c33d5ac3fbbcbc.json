@@ -1,0 +1,70 @@
+{
+  "scenarioId": "scenario-over-limit-statement-close-001",
+  "summary": "The cardholder starts with a zero balance, makes purchases during the billing cycle that push the account above a $500 credit limit, and reaches statement close while still over limit. The scenario also includes a later minimum payment due date with no payment made, so the over-limit condition is present at statement close and the minimum payment obligation is intentionally left unmet.",
+  "assumptions": [
+    "The account begins a new billing cycle with a $0.00 previous balance and an active credit card account.",
+    "The disclosed credit limit for this scenario is $500.00.",
+    "All purchases are authorized card transactions posted during the same billing cycle before statement close.",
+    "No payments, credits, interest charges, or other fees are posted before the statement close event, so the statement new balance equals the sum of purchases.",
+    "Because the archetype focuses on being over the credit limit at statement close, the cardholder's promise not to exceed the credit limit is treated as breached by the purchase activity.",
+    "The modeled minimum payment obligation is included via a due-check event tied to clause.5.minimum_payment_obligation; no payment event occurs by the due date, so that obligation is intentionally unmet in this scenario."
+  ],
+  "initialState": {
+    "currency": "USD",
+    "creditLimit": 500,
+    "previousBalance": 0,
+    "accountStatus": "open",
+    "billingCycleStart": "2025-01-01"
+  },
+  "events": [
+    {
+      "id": "evt1",
+      "date": "2025-01-03",
+      "type": "purchase",
+      "amount": 220,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt2",
+      "date": "2025-01-10",
+      "type": "purchase",
+      "amount": 180,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt3",
+      "date": "2025-01-22",
+      "type": "purchase",
+      "amount": 160,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt4",
+      "date": "2025-01-31",
+      "type": "statement_close",
+      "amount": 560,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt5",
+      "date": "2025-02-25",
+      "type": "due_check",
+      "amount": 16.8,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --import tsx --test tests/**/*.test.ts",
+    "test": "node --import tsx --test 'tests/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "check:expectations": "tsx scripts/check-expectations.ts",
     "test:expr": "tsx src/core/eval-expr.test.ts",

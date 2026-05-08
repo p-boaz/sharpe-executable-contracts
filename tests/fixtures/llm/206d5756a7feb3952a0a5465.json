@@ -1,0 +1,81 @@
+{
+  "scenarioId": "credit-card-on-time-full-payment-001",
+  "summary": "A cardholder makes a purchase during a billing cycle, receives a statement, and then pays the full statement balance before the due date. The scenario is designed to show timely satisfaction of the minimum-payment obligation, preservation of the purchase grace period, and no late or over-limit fee exposure.",
+  "assumptions": [
+    "The account has no previous balance at the start of this billing cycle, so the grace-period condition is satisfied for new purchases.",
+    "The cardholder's credit limit is $1000.00, and the single purchase in this scenario does not cause the outstanding balance to exceed that limit.",
+    "The periodic statement closes on 2025-03-31 and sets a payment due date of 2025-04-25, which is 25 days after statement close and satisfies the contract's minimum grace-period timing for purchases.",
+    "The statement's new balance is $200.00, so the contractual minimum payment would be $15.00, but the cardholder chooses to pay the full $200.00 instead.",
+    "Payments are made through an approved standard method and credited on the date received.",
+    "No cash advances, returned payments, international transactions, disputed charges, or skipped-payment offers occur in this scenario.",
+    "Although clause.4.credit_limits and clause.6.grace_period are not payment obligations by the cardholder, events are included and explicitly bound to those clause ids so the executor can evaluate them within this archetype."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "statementBalance": 200,
+    "newBalance": 200,
+    "minimumPayment": 15,
+    "dueDate": "2025-04-25",
+    "statementCloseDate": "2025-03-31",
+    "aprPurchases": 0.079,
+    "previousStatementPaidInFullByDueDate": true,
+    "noPreviousBalance": true,
+    "lateFeeAmount": 25,
+    "overLimitFeeAmount": 10
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-03-10",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.6.grace_period",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-04-20",
+      "type": "payment",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-04-25",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause.6.grace_period",
+        "actor": "party-issuer"
+      }
+    }
+  ]
+}

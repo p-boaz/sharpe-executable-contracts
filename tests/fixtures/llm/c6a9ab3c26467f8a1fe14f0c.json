@@ -1,0 +1,72 @@
+{
+  "scenarioId": "scenario-on-time-full-payment-001",
+  "summary": "A cardholder makes a purchase well below the credit limit, receives a statement, and pays the full statement balance before the due date. The scenario exercises timely satisfaction of the minimum payment obligation and the issuer's grace-period treatment, with no late fee and no over-limit fee outcome.",
+  "assumptions": [
+    "The account begins this cycle with no previous balance, so the purchase qualifies for the contract's purchase grace-period treatment.",
+    "The disclosed credit limit is $1000.00, and the single purchase in this scenario does not cause the outstanding balance to exceed that limit.",
+    "The statement closes 29 days before the payment due date, satisfying the contract's requirement that the issuer provide not less than 25 days before imposing interest on new purchases.",
+    "The issuer does not impose any late fee or over-limit fee because payment is made on or before the due date and the balance never exceeds the credit limit.",
+    "To satisfy the modeled issuer grace-period obligation in the executor, the statement_close event is explicitly bound to clause.grace_period_obligation even though the clause describes the issuer's provision of time rather than a discrete monetary transfer.",
+    "To satisfy the modeled credit-limit obligation in the executor, the purchase event is explicitly bound to clause.credit_limit_obligation because it demonstrates use of the card without exceeding the disclosed limit."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "currentBalance": 0,
+    "statementBalance": 0,
+    "minimumPaymentDue": 0,
+    "dueDate": "2026-05-25",
+    "billingCycleStart": "2026-04-01",
+    "billingCycleEnd": "2026-04-26"
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2026-04-10",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.credit_limit_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2026-04-26",
+      "type": "statement_close",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.grace_period_obligation",
+        "actor": "party-issuer",
+        "newBalance": 200,
+        "minimumPayment": 15,
+        "daysUntilDue": 29
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2026-05-20",
+      "type": "payment",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.minimum_payment_obligation",
+        "actor": "party-cardholder",
+        "appliedToStatementBalance": 200
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2026-05-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "actor": "party-issuer",
+        "result": "payment_received_on_time_and_in_full",
+        "lateFeeApplied": false,
+        "overLimitFeeApplied": false
+      }
+    }
+  ]
+}

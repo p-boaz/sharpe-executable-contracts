@@ -1,0 +1,83 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A monthly statement closes with a balance that remains under the credit limit, setting a minimum payment due on a stated due date. The cardholder then makes a partial payment after the due date and below the required minimum, exercising the late-payment/default path while still including obligation-bound events for both modeled clauses.",
+  "assumptions": [
+    "The billing cycle closes on 2025-05-31 and the resulting periodic statement sets a payment due date of 2025-06-25.",
+    "The statement's New Balance is $500.00, so the minimum payment is 3% of $500.00 = $15.00, because that is greater than $15.00 only by equality; the required minimum remains $15.00.",
+    "A single $10.00 payment received on 2025-06-28 is credited on that same date and is the only payment made toward this statement before the due check.",
+    "The account credit limit is $1000.00 throughout the scenario, so the outstanding balance never exceeds the credit limit.",
+    "To satisfy the executor's obligation binding requirements, the purchase event is tagged to clause.4.credit-limits as the cardholder's performance under the promise not to exceed the limit; this scenario treats that obligation as met because the balance stays within the limit.",
+    "To satisfy the executor's obligation binding requirements, the late, below-minimum payment event is tagged to clause.5.minimum-payment-obligation even though it does not fully satisfy the contractual timing/amount requirement; this scenario therefore treats that obligation as attempted but unmet for late-payment analysis."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "dueDate": "2025-06-25",
+    "statementClosingDate": "2025-05-31",
+    "annualPercentageRate": 0.109,
+    "periodicAprType": "purchase_or_cash_advance_mixed",
+    "newBalance": 500,
+    "minimumPaymentDue": 15
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-05-10",
+      "type": "purchase",
+      "amount": 500,
+      "metadata": {
+        "clauseId": "clause.4.credit-limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-05-31",
+      "type": "statement_close",
+      "amount": 500,
+      "metadata": {
+        "actor": "party-credit_union",
+        "statementNewBalance": 500,
+        "minimumPaymentDue": 15,
+        "paymentDueDate": "2025-06-25"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-06-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause.5.minimum-payment-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-06-29",
+      "type": "due_check",
+      "amount": 15,
+      "metadata": {
+        "actor": "party-credit_union",
+        "dueDate": "2025-06-25",
+        "requiredMinimum": 15,
+        "paidByDueDate": 0,
+        "paymentAfterDueDate": 10,
+        "status": "late_and_below_minimum"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-06-29",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-credit_union",
+        "noticeType": "late_payment_fee_may_apply",
+        "reason": "Payment was posted after due date and below minimum payment"
+      }
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A cardholder makes purchases during a billing cycle, receives a statement with a due date, and then submits a payment after that due date for less than the required minimum. The scenario is designed to exercise the late-payment/default path while also showing that the account stayed within the credit limit and that the prior-cycle grace-period condition was not satisfied.",
+  "assumptions": [
+    "The billing cycle closes on 2025-03-31 and the statement shows a New Balance of $600.00 with a payment due date of 2025-04-25.",
+    "Under the contract formula, the minimum payment for a $600.00 New Balance is $18.00 (3% of $600.00), which is greater than $15.00.",
+    "A payment of $10.00 is intentionally posted on 2025-04-28, after the due date, so the minimum payment obligation is not met on time.",
+    "The prior statement was not paid in full by its due date, so the contractual grace-period condition for new purchases is not satisfied in this archetype; a notice event is included referencing clause.6.grace_period to record that this obligation is treated as unmet/not triggered for the late-payment narrative.",
+    "The account remains below the $1,000.00 credit limit throughout the scenario, so the credit-limit obligation is satisfied.",
+    "A due_check event is used to test whether the required minimum payment was made by the due date; it references the minimum-payment obligation clause even though the outcome is breach rather than performance."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 200,
+    "aprPurchases": 0.109,
+    "billingCycleStart": "2025-03-01",
+    "billingCycleEnd": "2025-03-31",
+    "dueDate": "2025-04-25",
+    "previousStatementPaidInFullByDueDate": false,
+    "noPreviousBalance": false,
+    "newBalanceAtStatementClose": 600,
+    "minimumPaymentDue": 18
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-03-10",
+      "type": "purchase",
+      "amount": 150,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-03-18",
+      "type": "purchase",
+      "amount": 250,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 600,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-issuer",
+        "statementPeriodStart": "2025-03-01",
+        "statementPeriodEnd": "2025-03-31",
+        "newBalance": 600,
+        "minimumPayment": 18,
+        "dueDate": "2025-04-25"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-04-01",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause.6.grace_period",
+        "actor": "party-issuer",
+        "message": "Prior statement was not paid in full by its due date, so no purchase grace period applies for this cycle."
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 18,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder",
+        "requiredMinimum": 18,
+        "paidByDueDate": 0,
+        "status": "unmet_on_due_date"
+      }
+    },
+    {
+      "id": "evt-006",
+      "date": "2025-04-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-007",
+      "date": "2025-04-30",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-issuer",
+        "message": "Late payment fee may be assessed because payment was late and below minimum."
+      }
+    }
+  ]
+}

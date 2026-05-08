@@ -1,6 +1,7 @@
 import type { BoolExpr, Clause, ContractIR, Effect, Expr, TemporalRule } from "../types/ir.js";
 import type { ExecutionResult } from "../types/execution.js";
 import type { Scenario } from "../types/scenario.js";
+import { findReferencedTerms } from "./definition-resolver.js";
 import { stableStringify } from "../util/json.js";
 
 function temporalToText(rule: TemporalRule): string {
@@ -118,15 +119,28 @@ function citationFor(clause: Clause): string {
   return ` (source: chars ${clause.sourceSpan.start}\u2013${clause.sourceSpan.end})`;
 }
 
-function clauseParagraph(clause: Clause): string[] {
+function clauseParagraph(clause: Clause, ir: ContractIR): string[] {
   const prefix = clause.modeled ? "" : "[UNMODELED] ";
   const titlePart = clause.title ? ` \u2014 ${clause.title}` : "";
   const heading = `${prefix}Clause ${clause.id}${titlePart}`;
-  const body = normalizeProse(clause.sourceText) || normalizeProse(effectToText(clause.effect));
+  // Body MUST be derived from the IR so that English verifies the executable.
+  // sourceText is preserved only as an annotated citation.
+  const body = normalizeProse(effectToText(clause.effect));
+  const sourceQuote = normalizeProse(clause.sourceText);
   const citation = citationFor(clause).trimStart();
-  return citation
-    ? [heading, body, citation, ""]
-    : [heading, body, ""];
+  const lines = [heading, body];
+  if (sourceQuote) lines.push(`(source text: "${sourceQuote}")`);
+  if (citation) lines.push(citation);
+  // Cross-reference defined terms that appear in the source. This turns
+  // the english.txt view into a navigable doc: a reader following
+  // "Effective Date" in a clause sees which definition supplies the date.
+  const referenced = findReferencedTerms(clause.sourceText, ir);
+  if (referenced.length > 0) {
+    const terms = referenced.map((d) => `"${d.term}"`).join(", ");
+    lines.push(`(defined terms referenced: ${terms})`);
+  }
+  lines.push("");
+  return lines;
 }
 
 export function decompileIrToEnglish(ir: ContractIR): string {
@@ -162,7 +176,7 @@ export function decompileIrToEnglish(ir: ContractIR): string {
   lines.push("Executable Clauses:");
   lines.push("");
   for (const clause of [...ir.clauses].sort((a, b) => a.id.localeCompare(b.id))) {
-    for (const line of clauseParagraph(clause)) {
+    for (const line of clauseParagraph(clause, ir)) {
       lines.push(line);
     }
   }

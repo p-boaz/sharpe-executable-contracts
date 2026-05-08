@@ -10,7 +10,7 @@
 
 **Non-goals for this plan:** generalized cross-family executor, defined-term resolution, cross-reference modeling, temporal-rule execution (business days / grace / cure). Those are follow-ups once the rubric-critical fixes land.
 
-**Recommended task order:** Task 0 (remove web — pure cleanup, shrinks the surface area everyone else works against) → Task 1 (decompiler) → Task 2 (prompt plumbing) → Task 3 (prompt rewrite) → Task 3b (model upgrade — paired with 3 because the stronger model + better prompt compound) → Task 4 (tag enforcement) → Task 5 (dead code + artifacts) → Task 6 (fixture mode) → Task 7 (expectations realign) → Task 8 (audit).
+**Recommended task order:** Task 0 (remove web — pure cleanup, shrinks the surface area everyone else works against) → Task 1 (decompiler) → Task 2 (prompt plumbing) → Task 3 (prompt rewrite) → Task 3b (model upgrade — paired with 3 because the stronger model + better prompt compound) → Task 4 (tag enforcement) → **Task 4.5 (executor/family dispatch on `semanticTag`, not clause IDs — discovered necessary during Task 5's first regen pass)** → Task 5 (dead code + artifacts — widened to all 7 audited contracts, not just the 2 working families) → Task 6 (fixture mode) → Task 7 (expectations realign) → Task 8 (audit).
 
 ---
 
@@ -775,13 +775,162 @@ unmodeled_section + modeled:false, preventing silent \$0.00-fee failures."
 
 ---
 
+## Task 4.5: Executor + Family Dispatch on `semanticTag`, Not Clause IDs
+
+**Why it matters (discovered during Task 5's first regen pass):** Task 4 made extractor output disciplined on `semanticTag`. But the executor and family detector still dispatch on hardcoded *clause IDs* (`clause.obligation.minimum_payment`, `clause.obligation.monthly_rent`), which the old heuristic extractor emitted and the live LLM extractor emits as section-numbered variants (`clause.5.minimum_payment_obligation`, `clause.2a.rent_obligation`). Observed regression on WesTex regen: 8 modeled clauses all with correct closed-vocab tags, but `isCreditCardScenario` returned false, credit-card branch never fired, late-payment ledger showed $0 interest / $0 fees where the cached run showed $1.74 interest, daily APR accrual, missed obligation, breach. This is POSTMORTEM Root Cause #3 verbatim — "Executor dispatches on [fields] that the live extractor doesn't reliably emit." Fixing Task 4 without fixing this is a 25% Executability wash.
+
+Second symptom, same root cause: `contractFamily()` in `archetypes.ts` checks `hasCreditSignals` before `hasLeaseSignals`, and `hasCreditSignals` fires on any `late_payment_fee` tag. Leases legitimately have late-rent fees, so Galleria (a lease with `rent_obligation` + `base_rent×7` + `tenant_default` + `late_payment_fee`) comes back as `family: credit_card` and runs the credit-card branch instead of the lease branch. Specific signals (rent/tenant) must win over ambiguous ones (late_payment_fee can appear in either family).
+
+**Files:**
+- Modify: `src/core/executor.ts` — replace every `clause.id === "clause.obligation.*"` match with a `semanticTag === <closed-vocab-tag> satisfies KnownSemanticTag` match. Specifically:
+  - `isLeaseScenario` (line ~123) and its rent-clause lookups at lines ~131, ~162: `"rent_obligation"`
+  - `isCreditCardScenario` (line ~345) and its lookups at ~348, ~526: `"minimum_payment_obligation"` / `"minimum_payment_formula"` / `"late_payment_fee"`
+  - Default `clauseId` strings at ~164 and ~614: when a specific clause can't be located, fall back to the *first clause with the matching semanticTag* rather than a hardcoded literal ID — and if none exists, surface an executor warning instead of silently mis-binding.
+- Modify: `src/pipeline/archetypes.ts` — in `contractFamily()`, reorder so `hasLeaseSignals` (which now keys off `rent_obligation` / `base_rent` / `tenant_default` tags, not `clause.id` strings) is checked before `hasCreditSignals`, and tighten `hasCreditSignals` so `late_payment_fee` alone is not sufficient — require it paired with a credit-card-specific tag (`minimum_payment_obligation`, `minimum_payment_formula`, `over_limit_fee`, `credit_limit_obligation`, `foreign_transaction_fee`).
+- Create: `tests/core/executor-dispatch.test.ts` — fixture IRs with section-numbered clause IDs (e.g. `clause.5.minimum_payment_obligation`, `clause.2a.rent_obligation`) but correct `semanticTag` values. Assert that `isCreditCardScenario` / `isLeaseScenario` return true and the right executor branch fires.
+- Create: `tests/pipeline/contract-family.test.ts` — fixture IRs representative of each family (with `late_payment_fee` present on a lease) to pin the detection order and prevent future ambiguity regressions.
+
+- [ ] **Step 1: Audit all hardcoded clause-ID matches in the executor**
+
+Run: Grep `clause\.(obligation|formula|fee|default)\.` against `src/core/executor.ts` and `src/pipeline/archetypes.ts`.
+
+Expected matches as of the regen discovery: 6 in `executor.ts` (lines ~131, 162, 164, 348, 526, 614), 1 in `archetypes.ts` (line ~97). Write each one down — each becomes a mechanical edit in Step 3.
+
+- [ ] **Step 2: Write failing tests**
+
+Two new tests:
+
+```ts
+// tests/core/executor-dispatch.test.ts
+import { describe, it, expect } from "vitest";
+import { isCreditCardScenario, isLeaseScenario } from "../../src/core/executor.js";
+// fixture IR with section-numbered clause IDs (as the live extractor emits)
+
+describe("executor dispatch under live-extractor clause IDs", () => {
+  it("recognizes credit-card IR by semanticTag regardless of clause.id form", () => {
+    const ir = mkIr([
+      mkClause({ id: "clause.5.minimum_payment_obligation", semanticTag: "minimum_payment_obligation", effect: mkObligation() }),
+      mkClause({ id: "clause.7.late_payment_fee", semanticTag: "late_payment_fee", effect: mkPayment() }),
+    ]);
+    expect(isCreditCardScenario(ir, mkScenario())).toBe(true);
+  });
+
+  it("recognizes lease IR by semanticTag regardless of clause.id form", () => {
+    const ir = mkIr([
+      mkClause({ id: "clause.2a.rent_obligation", semanticTag: "rent_obligation", effect: mkObligation() }),
+      mkClause({ id: "clause.2b.late_payment_fee", semanticTag: "late_payment_fee", effect: mkPayment() }),
+    ]);
+    expect(isLeaseScenario(ir, mkScenario())).toBe(true);
+  });
+});
+```
+
+```ts
+// tests/pipeline/contract-family.test.ts
+import { describe, it, expect } from "vitest";
+import { contractFamily } from "../../src/pipeline/archetypes.js";
+
+describe("contractFamily — prefer specific signals over ambiguous ones", () => {
+  it("classifies a lease with late_payment_fee as lease, not credit_card", () => {
+    const ir = mkIr({
+      title: "Office Lease",
+      clauses: [
+        mkClause({ semanticTag: "rent_obligation", effect: mkObligation() }),
+        mkClause({ semanticTag: "late_payment_fee", effect: mkPayment() }),
+      ],
+    });
+    expect(contractFamily(ir)).toBe("lease");
+  });
+
+  it("classifies a credit card IR as credit_card only when paired signals present", () => {
+    const ir = mkIr({
+      title: "Credit Card Agreement",
+      clauses: [
+        mkClause({ semanticTag: "minimum_payment_obligation", effect: mkObligation() }),
+        mkClause({ semanticTag: "late_payment_fee", effect: mkPayment() }),
+      ],
+    });
+    expect(contractFamily(ir)).toBe("credit_card");
+  });
+});
+```
+
+Run: `pnpm test`. Expected: both new tests FAIL against the current executor/archetypes.
+
+- [ ] **Step 3: Swap clause-ID matches for `semanticTag` matches in `executor.ts`**
+
+For each of the 6 sites identified in Step 1, replace `clause.id === "clause.obligation.minimum_payment"` (and its rent peer) with the `semanticTag satisfies KnownSemanticTag` pattern already used at `executor.ts:354`. For the two default-clauseId sites (~164, ~614), resolve the clauseId by `ir.clauses.find((c) => c.semanticTag === "<tag>")?.id` and log a warning if none is found.
+
+- [ ] **Step 4: Reorder + tighten `contractFamily()` in `archetypes.ts`**
+
+```ts
+// pseudocode
+const hasLeaseSignals =
+  title.includes("lease") ||
+  hasModeledClause(ir, (c) =>
+    c.semanticTag === ("rent_obligation" satisfies KnownSemanticTag) ||
+    c.semanticTag === ("base_rent" satisfies KnownSemanticTag) ||
+    c.semanticTag === ("tenant_default" satisfies KnownSemanticTag),
+  );
+
+const hasCreditCardSpecificSignal = hasModeledClause(ir, (c) =>
+  c.semanticTag === ("minimum_payment_obligation" satisfies KnownSemanticTag) ||
+  c.semanticTag === ("minimum_payment_formula" satisfies KnownSemanticTag) ||
+  c.semanticTag === ("over_limit_fee" satisfies KnownSemanticTag) ||
+  c.semanticTag === ("credit_limit_obligation" satisfies KnownSemanticTag) ||
+  c.semanticTag === ("foreign_transaction_fee" satisfies KnownSemanticTag),
+);
+const hasCreditSignals = title.includes("credit") || title.includes("card") || hasCreditCardSpecificSignal;
+
+// Lease-specific signals win over credit signals when both are present.
+if (hasLeaseSignals && !hasCreditCardSpecificSignal) return "lease";
+if (hasCreditSignals) return "credit_card";
+if (hasLeaseSignals) return "lease";
+return "generic";
+```
+
+- [ ] **Step 5: Run new tests + full suite**
+
+Run: `pnpm test`. Expected: both new tests PASS; prior tests still pass.
+
+- [ ] **Step 6: Sanity-re-run WesTex and Galleria live**
+
+Run:
+```bash
+pnpm run run --contract contracts/WesTex-VISA-credit-card-agreement.md
+pnpm run run --contract contracts/Galleria-Atlanta-office-lease-American-Safety-Insurance-2006.md
+```
+
+Expected: WesTex late-payment execution shows `totalInterestCharged > 0` and `breached: true` (or at least a missed obligation). Galleria `family` line reports `lease`, not `credit_card`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/core/executor.ts src/pipeline/archetypes.ts tests/core/executor-dispatch.test.ts tests/pipeline/contract-family.test.ts
+git commit -m "fix(executor,archetypes): dispatch on semanticTag, not hardcoded clause IDs
+
+Observed on the Task 5 regen pass: the live LLM extractor emits
+section-numbered clause IDs (clause.5.minimum_payment_obligation,
+clause.2a.rent_obligation) but the executor and contractFamily
+detector were string-matching on the heuristic extractor's old IDs
+(clause.obligation.minimum_payment / clause.obligation.monthly_rent).
+With Task 4's closed vocab in place, semanticTag is the right dispatch
+key. Also tightens family detection: lease with a late-rent fee no
+longer mis-classifies as credit_card — credit_card now requires a
+credit-card-specific tag, not just any late_payment_fee."
+```
+
+---
+
 ## Task 5: Delete Dead Code + Regenerate Committed Artifacts
 
 **Why it matters:** Committed `out/credit-card-agreement/meta.json` says `mode: heuristic_fallback`, but `heuristicFallbackIr` is never called and `--no-llm` throws. A judge cloning the repo gets a different, worse artifact than what's committed. Demo drift.
 
+**Scope decision (2026-04-13):** Widened from the plan's original "2 working contracts" to **all 7 audited contracts** (WesTex, Galleria, A-Plus/Xodtec, Masterworks, OneAmerica, ORBCOMM, Sequa). Rationale: Tasks 1–4 are expected to lift the 5 collapsed contracts (all reporting 0 modeled clauses in POSTMORTEM §1) off the floor. Regenerating only the 2 working families would leave that signal unverified until Task 8, so we regenerate all 7 as part of Task 5 and carry the expanded cache forward. The stop-signal is also adjusted: for the 5 previously-collapsed contracts, "numbers dropped" is not a coherent test (they had no numbers to begin with); the test is "did modeled-clause count go above zero?"
+
 **Files:**
 - Modify: `src/pipeline/extract-ir.ts` (delete `heuristicFallbackIr` and helpers if unused)
-- Delete (regenerate): `out/credit-card-agreement/**`, `out/galleria-atlanta-*/**`
+- Delete (regenerate): `out/credit-card-agreement/**`, `out/galleria-atlanta-*/**`, and fresh directories for the 5 previously-collapsed contracts
 
 - [ ] **Step 1: Verify `heuristicFallbackIr` is dead**
 

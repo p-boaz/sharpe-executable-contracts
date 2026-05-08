@@ -1,0 +1,100 @@
+{
+  "scenarioId": "westex-visa-credit-card-agreement_on-time-full-payment_001",
+  "summary": "A cardholder makes ordinary purchase transactions during a billing cycle, stays below the credit limit, receives a statement, and then pays the full statement balance on the due date. The scenario is designed to show an on-time full-payment path with no late fee and no over-limit fee, while also reflecting the issuer's purchase grace-period treatment.",
+  "assumptions": [
+    "The account has no previous balance at the start of this billing cycle, so the purchase grace-period condition is satisfied under clause.6.grace_period.",
+    "Only purchase transactions occur in this scenario; there are no cash advances, balance transfers, returned payments, foreign transactions, or disputed charges.",
+    "The statement due date is 25 days after statement closing, satisfying the contract's 'not less than 25 days' grace period for purchases.",
+    "Payments are made through an approved standard method and credited on the date received.",
+    "The full statement balance is paid on the due date, which also exceeds the minimum payment required under the agreement.",
+    "Because the outstanding balance never exceeds the credit limit, no over-limit fee is triggered.",
+    "Because payment is made on or before the due date, no late payment fee or default is triggered."
+  ],
+  "initialState": {
+    "contractId": "westex-visa-credit-card-agreement",
+    "accountId": "acct-001",
+    "currency": "USD",
+    "billingCycleStart": "2026-01-01",
+    "billingCycleEnd": "2026-01-31",
+    "statementDate": "2026-01-31",
+    "dueDate": "2026-02-25",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "previousStatementPaidInFullByDueDate": true,
+    "aprPurchases": 0.079,
+    "newBalance": 120,
+    "minimumPayment": 15
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2026-01-05",
+      "type": "purchase",
+      "amount": 45,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2026-01-12",
+      "type": "purchase",
+      "amount": 35,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2026-01-20",
+      "type": "purchase",
+      "amount": 40,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2026-01-31",
+      "type": "statement_close",
+      "amount": 120,
+      "metadata": {
+        "clauseId": "clause.6.grace_period",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2026-02-25",
+      "type": "payment",
+      "amount": 120,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-006",
+      "date": "2026-02-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-007",
+      "date": "2026-02-25",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause.6.grace_period",
+        "actor": "party-issuer"
+      }
+    }
+  ]
+}

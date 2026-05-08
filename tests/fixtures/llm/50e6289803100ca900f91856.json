@@ -1,0 +1,93 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "The cardholder makes ordinary charges within the credit limit, receives a monthly statement, and then submits a payment after the due date for less than the required minimum. This scenario exercises the late-payment path by showing that the minimum payment obligation is not timely satisfied even though a partial payment eventually posts.",
+  "assumptions": [
+    "The billing cycle closes on 2025-03-31 and the statement sets a payment due date of 2025-04-25.",
+    "The new balance on the statement is $600.00, so the contractual minimum payment is 3% of $600.00 = $18.00, which is greater than $15.00.",
+    "A single $10.00 payment is received and credited on 2025-04-28, which is after the due date and below the $18.00 minimum.",
+    "All purchases in this scenario remain within the $1,000.00 credit limit, so the credit-limit obligation is included and treated as satisfied rather than breached.",
+    "Because the archetype is specifically late payment below minimum, no on-time payment equal to or above the minimum is made before or on the due date."
+  ],
+  "initialState": {
+    "accountId": "acct-card-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "billingCycleStart": "2025-03-01",
+    "billingCycleEnd": "2025-03-31",
+    "dueDate": "2025-04-25",
+    "aprPurchase": 0.109,
+    "newBalance": 600,
+    "minimumPayment": 18,
+    "availableCredit": 1000
+  },
+  "events": [
+    {
+      "id": "evt-1",
+      "date": "2025-03-05",
+      "type": "purchase",
+      "amount": 250,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-2",
+      "date": "2025-03-12",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-3",
+      "date": "2025-03-20",
+      "type": "cash_advance",
+      "amount": 150,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-4",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 600,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-5",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 18,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-6",
+      "date": "2025-04-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-7",
+      "date": "2025-04-28",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A cardholder makes purchases during a billing cycle, receives a statement with a minimum payment due, and then posts a payment after the due date for less than the required minimum. The scenario is designed to exercise the late-payment/default path while also including explicit events for the credit-limit and grace-period modeled obligations.",
+  "assumptions": [
+    "The billing cycle closes on 2025-03-31 and the resulting statement shows a New Balance of 600.00 USD.",
+    "Under the contract formula, the minimum payment on a 600.00 USD New Balance is 18.00 USD (3% of 600.00), which is greater than 15.00 USD.",
+    "The payment due date on that statement is 2025-04-25, satisfying the contract's at-least-25-day purchase grace period from statement close.",
+    "The cardholder posts only one payment relevant to this statement period: 10.00 USD on 2025-04-28, which is both after the due date and below the 18.00 USD minimum payment.",
+    "The account credit limit is 1000.00 USD throughout the scenario, and the purchases in this scenario never cause the outstanding balance to exceed that limit.",
+    "The grace-period obligation is represented by the statement close occurring 25 days before the due date; this scenario does not separately model an interest-charge posting event."
+  ],
+  "initialState": {
+    "contractId": "westex-visa-credit-card-agreement",
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "statementBalance": 600,
+    "minimumPaymentDue": 18,
+    "dueDate": "2025-04-25",
+    "aprAssumed": 0.109,
+    "status": "open"
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-03-10",
+      "type": "purchase",
+      "amount": 250,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-03-18",
+      "type": "purchase",
+      "amount": 350,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 600,
+      "metadata": {
+        "clauseId": "clause.6.grace_period",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 18,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-04-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-006",
+      "date": "2025-04-28",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-issuer"
+      }
+    }
+  ]
+}

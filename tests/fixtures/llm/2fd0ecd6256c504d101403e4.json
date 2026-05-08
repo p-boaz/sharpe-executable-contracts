@@ -1,0 +1,71 @@
+{
+  "scenarioId": "credit-card-over-limit-statement-close-001",
+  "summary": "The cardholder starts a new billing cycle with no previous balance, makes purchases that push the account above the $500 credit limit, and reaches statement close while still over limit. The scenario is designed to test over-limit status at statement close while also including the modeled minimum-payment and grace-period obligations in the timeline.",
+  "assumptions": [
+    "The account begins a new billing cycle with a $0 previous balance, so the issuer's 25-day purchase grace-period obligation is in force for this cycle.",
+    "The issuer allows purchases to post even though the cardholder's promise is not to exceed the credit limit; this lets the scenario test statement-close over-limit behavior and potential over-limit fee treatment.",
+    "No payments are made before statement close, so the new balance at statement close equals the sum of cycle purchases.",
+    "A periodic statement is generated on the statement_close date and shows a minimum payment based on the contract formula, but that payment is not yet due within this scenario timeline.",
+    "Because the due date falls after the statement_close event, the minimum-payment obligation is included for completeness but is treated as not yet due and therefore unmet within this archetype window.",
+    "The payment event included after statement close is a partial voluntary payment that does not satisfy the full statement minimum; it is included to bind the modeled payment obligation into the scenario, while the archetype focuses on the earlier over-limit condition at statement close."
+  ],
+  "initialState": {
+    "currency": "USD",
+    "creditLimit": 500,
+    "previousBalance": 0,
+    "cycleStartDate": "2025-01-01",
+    "aprPurchases": 0.079,
+    "accountStatus": "open"
+  },
+  "events": [
+    {
+      "id": "evt-1-purchase",
+      "date": "2025-01-05",
+      "type": "purchase",
+      "amount": 320,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-2-purchase",
+      "date": "2025-01-12",
+      "type": "purchase",
+      "amount": 260,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-3-notice-grace-period",
+      "date": "2025-01-20",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause-6-grace-period",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-4-statement-close",
+      "date": "2025-01-31",
+      "type": "statement_close",
+      "amount": 580,
+      "metadata": {
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-5-payment",
+      "date": "2025-02-20",
+      "type": "payment",
+      "amount": 15,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

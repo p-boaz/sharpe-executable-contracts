@@ -106,6 +106,86 @@ export type Effect =
       kind: "unmodeled";
     };
 
+/**
+ * Closed vocabulary of semanticTags the executor recognizes.
+ * Extractor output is validated against this list; unknown tags trigger
+ * a single LLM repair retry, then are coerced to "unmodeled_section"
+ * if still unrecognized.
+ */
+export const KNOWN_SEMANTIC_TAGS = [
+  // credit-card archetype
+  "late_payment_fee",
+  "over_limit_fee",
+  "returned_payment_fee",
+  "foreign_transaction_fee",
+  "minimum_payment_obligation",
+  "minimum_payment_formula",
+  "credit_limit_obligation",
+  "illegal_use_default",
+  "apr_nominal",
+  "grace_period_obligation",
+  "payment_default",
+  // lease archetype
+  "rent_obligation",
+  "base_rent",
+  "tenant_default",
+  "lease_term",
+  "late_rent_fee",
+  "security_deposit",
+  "operating_expense_pass_through",
+  "renewal_option",
+  "tenant_indemnifies_landlord",
+  // employment archetype
+  "employment_term",
+  "recurring_base_salary",
+  "without_cause_severance",
+  "without_cause_termination_notice",
+  "employee_voluntary_termination_notice",
+  "cause_termination",
+  "non_compete_restriction",
+  "non_compete_extension_salary",
+  "non_solicit_customers",
+  "non_solicit_employees",
+  // services / engagement archetype
+  "engagement_term",
+  "termination_notice",
+  "voluntary_termination_notice",
+  "material_breach_termination",
+  "fee_dispute_notice",
+  "late_trading_cutoff",
+  "indemnity_notice_obligation",
+  "administrative_fees",
+  "sales_commission",
+  "recurring_support_fee",
+  "expense_reimbursement_cap",
+  "underwriting_compensation_cap",
+  "service_provider_indemnifies_distributor_and_funds",
+  "distributor_indemnifies_service_provider",
+  // procurement archetype
+  "firm_fixed_price",
+  "optional_payload_unit_price",
+  "net_payment_terms",
+  "on_time_delivery_incentive",
+  "holdback_amount",
+  "option_exercise_window",
+  // securities / M&A archetype
+  "target_share_transfer",
+  "acquirer_equity_issuance",
+  "closing_date",
+  "closing_delivery",
+  "mutual_indemnification_on_reps",
+  "attorneys_fees_reimbursement",
+  // meta
+  "unmodeled_section",
+  "unmodeled_summary",
+] as const;
+
+export type KnownSemanticTag = (typeof KNOWN_SEMANTIC_TAGS)[number];
+
+export function isKnownSemanticTag(tag: string): tag is KnownSemanticTag {
+  return (KNOWN_SEMANTIC_TAGS as readonly string[]).includes(tag);
+}
+
 export interface Clause {
   id: string;
   title: string;
