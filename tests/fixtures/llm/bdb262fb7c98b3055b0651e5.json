@@ -1,0 +1,90 @@
+{
+  "scenarioId": "westex-visa-on-time-full-payment-001",
+  "summary": "A single billing cycle includes ordinary card use that stays below the credit limit, followed by statement closing and a full payoff made before the due date. The scenario tests that the minimum-payment obligation is satisfied on time and that neither a late fee nor an over-limit fee should apply.",
+  "assumptions": [
+    "The account starts this scenario with no previous balance, so the new balance for the cycle is created entirely by the listed transactions.",
+    "The cardholder's disclosed credit limit is $1000.00, and all listed transactions are authorized and approved.",
+    "The billing cycle closes on 2025-05-31 and the payment due date on that statement is 2025-06-25.",
+    "Because the highest outstanding balance in the cycle is $260.00, the cardholder remains within the credit limit and no over-limit fee should be triggered.",
+    "The statement's minimum payment is calculated from the new balance under the contract formula: max(3% of $260.00, $15.00) = $15.00.",
+    "The cardholder chooses to pay the full statement balance of $260.00 before the due date, which necessarily satisfies the minimum-payment obligation as well.",
+    "No returned payment, disputed charge, foreign transaction, illegal use, acceleration, or special fee event occurs in this archetype."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "aprPurchases": 0.109,
+    "billingCycleStart": "2025-05-01",
+    "billingCycleEnd": "2025-05-31",
+    "statementDate": "2025-05-31",
+    "dueDate": "2025-06-25",
+    "statementNewBalance": 260,
+    "statementMinimumPayment": 15,
+    "lateFeeAmount": 25,
+    "overLimitFeeAmount": 10
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-05-05",
+      "type": "purchase",
+      "amount": 120,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-05-14",
+      "type": "purchase",
+      "amount": 80,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-05-22",
+      "type": "purchase",
+      "amount": 60,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-05-31",
+      "type": "statement_close",
+      "amount": 260,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-06-20",
+      "type": "payment",
+      "amount": 260,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-006",
+      "date": "2025-06-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-credit_union"
+      }
+    }
+  ]
+}

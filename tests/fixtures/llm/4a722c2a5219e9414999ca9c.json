@@ -1,0 +1,75 @@
+{
+  "scenarioId": "credit-card-over-limit-statement-close-001",
+  "summary": "The cardholder starts a billing cycle with no balance and makes purchases that push the account above its $1,000 credit limit before the monthly statement closes. The scenario is designed to show an over-limit condition at statement close, while also including the minimum-payment obligation as an unmet due-date check after no payment is made.",
+  "assumptions": [
+    "The account is open, the card has been issued, and the cardholder is authorized to use it for ordinary purchases during this billing cycle.",
+    "The billing cycle begins with a zero previous balance and no unpaid fees, interest, credits, or disputed amounts.",
+    "A numeric credit limit of 1000 applies throughout the scenario and is not changed by the Credit Union during the cycle.",
+    "All three purchase transactions are approved and posted even though the combined purchases exceed the credit limit by statement close; this lets the scenario test the contract's over-limit behavior.",
+    "No payment is made before the statement closes or by the payment due date, so the minimum-payment obligation is treated as unmet in this archetype.",
+    "The modeled obligation in clause_4_credit_limits is represented by the cardholder's purchase-use events, but the scenario intentionally results in breach because those uses cause the outstanding balance to exceed the credit limit.",
+    "The modeled obligation in clause_5_minimum_payment_obligation is included through a due-date check event bound to that clause id; it is included to satisfy executor binding requirements even though no payment event occurs and the obligation remains unmet."
+  ],
+  "initialState": {
+    "currency": "USD",
+    "accountStatus": "open",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "currentBalance": 0,
+    "availableCredit": 1000,
+    "billingCycleStart": "2025-01-01",
+    "statementClosingDay": "2025-01-31",
+    "paymentDueDate": "2025-02-25"
+  },
+  "events": [
+    {
+      "id": "evt_1_purchase_groceries",
+      "date": "2025-01-05",
+      "type": "purchase",
+      "amount": 400,
+      "metadata": {
+        "clauseId": "clause_4_credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt_2_purchase_electronics",
+      "date": "2025-01-14",
+      "type": "purchase",
+      "amount": 450,
+      "metadata": {
+        "clauseId": "clause_4_credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt_3_purchase_furniture",
+      "date": "2025-01-22",
+      "type": "purchase",
+      "amount": 300,
+      "metadata": {
+        "clauseId": "clause_4_credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt_4_statement_close",
+      "date": "2025-01-31",
+      "type": "statement_close",
+      "amount": 1150,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt_5_due_check_min_payment_unpaid",
+      "date": "2025-02-25",
+      "type": "due_check",
+      "amount": 34.5,
+      "metadata": {
+        "clauseId": "clause_5_minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

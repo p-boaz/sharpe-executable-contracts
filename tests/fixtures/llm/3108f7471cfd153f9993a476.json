@@ -1,0 +1,766 @@
+{
+  "contractId": "Galleria-Atlanta-office-lease-American-Safety-Insurance-2006",
+  "title": "Galleria Atlanta Office Lease Agreement",
+  "jurisdiction": "Georgia, United States",
+  "currency": "USD",
+  "parties": [
+    {
+      "id": "party-landlord",
+      "role": "landlord",
+      "name": "OTR, an Ohio general partnership"
+    },
+    {
+      "id": "party-tenant",
+      "role": "tenant",
+      "name": "American Safety Insurance Services, Inc."
+    }
+  ],
+  "definitions": [
+    {
+      "id": "def-lease-term",
+      "term": "Lease Term",
+      "meaning": "The term of the Lease shall be for eighty-six (86) months (or until sooner terminated as herein provided), beginning on February 1, 2007 or the Commencement Date, whichever shall last occur, except that if the Commencement Date is other than the first day of a calendar month, the term is extended for the remainder of that calendar month.",
+      "sourceText": "The term of the Lease shall be for eighty-six (86) months (or until sooner terminated as herein provided) (the \"Lease Term\"), beginning on (i) February 1, 2007 or (ii) the \"Commencement Date\" (as hereinafter defined), whichever shall last occur, except that if the Commencement Date is other than the first day of a calendar month, the term hereof shall be extended for the remainder of that calendar month."
+    },
+    {
+      "id": "def-commencement-date",
+      "term": "Commencement Date",
+      "meaning": "The earlier of substantial completion of the Premises in accordance with Landlord's plans and specifications, but not earlier than February 1, 2007, or the date Tenant takes possession of any portion of the Premises, subject to acceleration for Tenant Delay.",
+      "sourceText": "The Commencement Date shall be the earlier of (i) the date upon which the Premises have been substantially completed in accordance with the plans and specifications of Landlord ... but which shall not be deemed to have occurred earlier than February 1, 2007 regardless of the status of completion, or (ii) the date on which Tenant takes possession of a portion of or all of the Premises; provided, however, that if Landlord shall be delayed in such substantial completion as a result of any of the foregoing (each, a “Tenant Delay”) ... the Commencement Date and the payment of rent hereunder shall be accelerated by the number of days of such delay."
+    },
+    {
+      "id": "def-rental-start-date",
+      "term": "Rental Start Date",
+      "meaning": "Five months following the Commencement Date.",
+      "sourceText": "Beginning five (5) months following the Commencement Date (the “Rental Start Date”), Tenant shall pay to Landlord throughout the term of this Lease rental as set forth below."
+    },
+    {
+      "id": "def-base-year",
+      "term": "Base Year",
+      "meaning": "Calendar year 2007 for purposes of direct operating expense comparisons.",
+      "sourceText": "Tenant shall pay to Landlord as additional rent Tenant's proportionate share of the amount by which the Direct Operating Expenses ... incurred by Landlord in the operation of the Building during each calendar year of the Lease Term exceeds the Direct Operating Expenses for the base year 2007 (hereinafter called the “Base Year”)."
+    },
+    {
+      "id": "def-tenants-proportionate-share-doe",
+      "term": "Tenant's Proportionate Share of Direct Operating Expenses",
+      "meaning": "For each calendar year or portion thereof, the Operating Expense Amount multiplied by a fraction with numerator 46,978 rentable square feet and denominator 410,571 rentable square feet.",
+      "sourceText": "\"Tenant's Proportionate Share of Direct Operating Expenses\" shall mean, for each calendar year (or portion thereof), the product of (i) the Operating Expense Amount ... multiplied by (ii) a fraction, the numerator of which is the number of square feet contained in the Premises (46,978) and the denominator of which is the number of rentable square feet contained in the Building (410,571)."
+    },
+    {
+      "id": "def-direct-operating-expenses",
+      "term": "Direct Operating Expenses",
+      "meaning": "All operating costs for the Building, and the Building's share of operating costs for the parking area, common area, and Property, subject to stated exclusions.",
+      "sourceText": "For purposes of this Lease, the term \"Direct Operating Expenses\" shall consist of all \"operating costs\" ... for the Building, and the Building’s share of all operating costs for any parking area and common area serving the Building, and the Property ... Direct Operating Expenses shall not include the following items: Leasing commissions, finders’ fees, brokerage fees, and costs incurred with the negotiation of leases ..."
+    },
+    {
+      "id": "def-hazardous-materials",
+      "term": "Hazardous Materials",
+      "meaning": "Any petroleum or chemical liquids or solids, liquid or gaseous products, contaminants, oils, radioactive materials, asbestos, PCB's, urea-formaldehyde, or any toxic or hazardous waste or hazardous substances under specified federal, state, and local environmental laws.",
+      "sourceText": "As used herein, \"Hazardous Materials\" means any petroleum or chemical liquids or solids, liquid or gaseous products, contaminants, oils, radioactive materials, asbestos, PCB's, urea-formaldehyde, or any toxic or hazardous waste or hazardous substances, as those terms are used in ... any and all other applicable federal, state or local law or regulation governing hazardous substances or workplace health or safety, as such laws may be amended from time to time."
+    },
+    {
+      "id": "def-agreed-interest-rate",
+      "term": "Agreed Interest Rate",
+      "meaning": "Four percentage points higher than the prime commercial lending rate from time to time of SunTrust Bank in Atlanta, Georgia, subject to the maximum lawful rate.",
+      "sourceText": "All such sums paid by Landlord and all expenses incurred by it in connection therewith shall be considered additional rent and shall be payable to Landlord by Tenant on demand and with interest at the rate of four percentage points higher than the prime commercial lending rate from time to time of SunTrust Bank in Atlanta, Georgia, provided, however, that if such rate exceeds the maximum rate permitted by law, the maximum lawful rate shall apply; the interest rate so determined is hereinafter called the \"Agreed Interest Rate\"."
+    }
+  ],
+  "clauses": [
+    {
+      "id": "clause.1.term_and_possession",
+      "title": "1. Term and Possession",
+      "sourceText": "The term of the Lease shall be for eighty-six (86) months ... beginning on (i) February 1, 2007 or (ii) the \"Commencement Date\" ... whichever shall last occur ... The Commencement Date shall be the earlier of ... substantial completion ... or ... the date on which Tenant takes possession ... if Landlord shall be delayed ... as a result of ... “Tenant Delay” ... the Commencement Date and the payment of rent hereunder shall be accelerated by the number of days of such delay.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.2a.rent_obligation",
+      "title": "2(a). Monthly Rental Payment Obligation",
+      "sourceText": "Beginning five (5) months following the Commencement Date (the “Rental Start Date”), Tenant shall pay to Landlord throughout the term of this Lease rental as set forth below, payable in equal monthly rental installments and payable in advance on the first day of each month during every year of the term hereby demised in lawful money of the United States, without deduction or offset whatsoever.",
+      "modeled": true,
+      "semanticTag": "rent_obligation",
+      "effect": {
+        "kind": "obligation",
+        "actor": "party-tenant",
+        "action": "pay monthly rent to Landlord in equal monthly installments in advance",
+        "due": {
+          "type": "monthly",
+          "day": 1,
+          "start": "Rental Start Date"
+        }
+      }
+    },
+    {
+      "id": "clause.2a.base_rent.period1",
+      "title": "2(a). Base Rent Period 1",
+      "sourceText": "Rental Start Date - 03/31/08        $19.25           $904,326.50      $75,360.54",
+      "modeled": true,
+      "semanticTag": "base_rent",
+      "effect": {
+        "kind": "formula",
+        "outputVar": "base_monthly_rent",
+        "expr": {
+          "op": "const",
+          "value": 75360.54
+        }
+      },
+      "condition": {
+        "type": "date_range",
+        "start": "Rental Start Date",
+        "end": "2008-03-31"
+      }
+    },
+    {
+      "id": "clause.2a.base_rent.period2",
+      "title": "2(a). Base Rent Period 2",
+      "sourceText": "04/01/08 - 03/31/09        $19.88           $933,922.64      $77,826.89",
+      "modeled": true,
+      "semanticTag": "base_rent",
+      "effect": {
+        "kind": "formula",
+        "outputVar": "base_monthly_rent",
+        "expr": {
+          "op": "const",
+          "value": 77826.89
+        }
+      },
+      "condition": {
+        "type": "date_range",
+        "start": "2008-04-01",
+        "end": "2009-03-31"
+      }
+    },
+    {
+      "id": "clause.2a.base_rent.period3",
+      "title": "2(a). Base Rent Period 3",
+      "sourceText": "04/01/09 - 03/31/10        $20.53           $964,458.34      $80,371.53",
+      "modeled": true,
+      "semanticTag": "base_rent",
+      "effect": {
+        "kind": "formula",
+        "outputVar": "base_monthly_rent",
+        "expr": {
+          "op": "const",
+          "value": 80371.53
+        }
+      },
+      "condition": {
+        "type": "date_range",
+        "start": "2009-04-01",
+        "end": "2010-03-31"
+      }
+    },
+    {
+      "id": "clause.2a.base_rent.period4",
+      "title": "2(a). Base Rent Period 4",
+      "sourceText": "04/01/10 - 03/31/11        $21.20           $995,933.60      $82,994.47",
+      "modeled": true,
+      "semanticTag": "base_rent",
+      "effect": {
+        "kind": "formula",
+        "outputVar": "base_monthly_rent",
+        "expr": {
+          "op": "const",
+          "value": 82994.47
+        }
+      },
+      "condition": {
+        "type": "date_range",
+        "start": "2010-04-01",
+        "end": "2011-03-31"
+      }
+    },
+    {
+      "id": "clause.2a.base_rent.period5",
+      "title": "2(a). Base Rent Period 5",
+      "sourceText": "04/01/11 - 03/31/12        $21.89         $1,028,348.42      $85,695.70",
+      "modeled": true,
+      "semanticTag": "base_rent",
+      "effect": {
+        "kind": "formula",
+        "outputVar": "base_monthly_rent",
+        "expr": {
+          "op": "const",
+          "value": 85695.7
+        }
+      },
+      "condition": {
+        "type": "date_range",
+        "start": "2011-04-01",
+        "end": "2012-03-31"
+      }
+    },
+    {
+      "id": "clause.2a.base_rent.period6",
+      "title": "2(a). Base Rent Period 6",
+      "sourceText": "04/01/12 - 03/31/13        $22.60         $1,061,202.80      $88,475.23",
+      "modeled": true,
+      "semanticTag": "base_rent",
+      "effect": {
+        "kind": "formula",
+        "outputVar": "base_monthly_rent",
+        "expr": {
+          "op": "const",
+          "value": 88475.23
+        }
+      },
+      "condition": {
+        "type": "date_range",
+        "start": "2012-04-01",
+        "end": "2013-03-31"
+      }
+    },
+    {
+      "id": "clause.2a.base_rent.period7",
+      "title": "2(a). Base Rent Period 7",
+      "sourceText": "04/01/13 - Last Day of Lease Term     $23.33         $1,095,996.74      $91,333.06",
+      "modeled": true,
+      "semanticTag": "base_rent",
+      "effect": {
+        "kind": "formula",
+        "outputVar": "base_monthly_rent",
+        "expr": {
+          "op": "const",
+          "value": 91333.06
+        }
+      },
+      "condition": {
+        "type": "date_range",
+        "start": "2013-04-01",
+        "end": "Last Day of Lease Term"
+      }
+    },
+    {
+      "id": "clause.2b.late_fee",
+      "title": "2(b). Late Charge",
+      "sourceText": "Tenant therefore agrees that if rent or any other payment due hereunder from Tenant to Landlord remains unpaid five (5) days after said amount is due, the amount of such unpaid rent or other payment shall be increased by a late charge to be paid to Landlord by Tenant in an amount equal to five percent (5%) of the amount of the delinquent rent or other payment.",
+      "modeled": true,
+      "semanticTag": "late_payment_fee",
+      "effect": {
+        "kind": "payment",
+        "payer": "party-tenant",
+        "payee": "party-landlord",
+        "amount": {
+          "op": "mul",
+          "args": [
+            {
+              "op": "const",
+              "value": 0.05
+            },
+            {
+              "op": "var",
+              "name": "delinquent_amount"
+            }
+          ]
+        }
+      },
+      "condition": {
+        "type": "if_unpaid_after_days",
+        "days": 5,
+        "obligation": "rent or other payment due from Tenant to Landlord"
+      }
+    },
+    {
+      "id": "clause.2c.additional_rent",
+      "title": "2(c). Operating Expense Adjustments",
+      "sourceText": "The monthly rental payable hereunder shall be subject to adjustment each calendar year during the term of this Lease, commencing January 1, 2008 ... Tenant shall pay to Landlord as additional rent Tenant's proportionate share of the amount by which the Direct Operating Expenses ... exceeds the Base Year's Direct Operating Expenses ... On or about December 31 of each calendar year ... Landlord shall estimate ... Within One Hundred Eighty (180) days after December 31 ... Landlord shall advise Tenant ... of the amount of actual Direct Operating Expenses ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.3.security_deposit",
+      "title": "3. Security Deposit",
+      "sourceText": "Tenant hereby deposits with Landlord on the date hereof the sum of Seventy Seven Thousand Eight Hundred Twenty Six and 89/100 Dollars ($77,826.89) ... as security for the full, timely and faithful performance of Tenant's covenants and obligations under this Lease ... Notwithstanding the foregoing, Landlord and Tenant acknowledge and agree that the foregoing security deposit, if not previously applied to Tenant’s obligations under this Lease ... shall be applied to rent due under this Lease for the month of April, 2008.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.4.occupancy_and_use",
+      "title": "4. Occupancy and Use",
+      "sourceText": "Tenant shall use and occupy the Premises for general office purposes and for no other use or purpose without the prior written consent of Landlord. Tenant shall not do or permit anything to be done in or about the Premises which will in any way obstruct or interfere with the rights of other tenants ... nor use or allow the Premises to be used for any improper, immoral, unlawful, or objectionable purposes.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.5.compliance_with_laws",
+      "title": "5. Compliance with Laws",
+      "sourceText": "Tenant shall not use the Premises or permit anything to be done in or about the Premises which will in any way conflict with any law ... Tenant shall not use, handle, store, deal in, discharge, or fabricate any Hazardous Materials ... Tenant shall indemnify Landlord ... from and against any and all claims, damages, losses, costs, and expenses ... as a result of the existence of any Hazardous Materials on or about the Premises ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.6.alterations",
+      "title": "6. Alterations",
+      "sourceText": "Tenant shall not make or suffer to be made any alterations, additions, or improvements in, on, or to the Premises ... without the prior written consent of Landlord ... provided, however, that Landlord’s consent shall not be required for any alterations or additions that satisfy the following criteria (“Cosmetic Alterations”) ... Tenant shall reimburse Landlord for the cost thereof upon demand.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.7.repair",
+      "title": "7. Repair",
+      "sourceText": "Tenant shall, at all times during the term hereof at Tenant's sole cost and expense, keep the Premises and every part thereof in good order, condition and repair ... Tenant shall upon the expiration or sooner termination of the term hereof ... surrender to Landlord the Premises ... in the same condition as when received, or when first installed, ordinary wear and tear ... excepted.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.8.liens",
+      "title": "8. Liens",
+      "sourceText": "Tenant shall keep the Premises free from any liens arising out of any work performed, material furnished, or obligations incurred by Tenant. In the event that Tenant shall not, within twenty (20) days following the recordation of any such lien, cause the same to be released ... Landlord shall have ... the right ... to cause the same to be released ... All such sums paid by Landlord ... shall be considered additional rent and shall be payable to Landlord by Tenant on demand and with interest ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.9.assignment_and_subletting",
+      "title": "9. Assignment and Subletting",
+      "sourceText": "Tenant shall not sell, assign, encumber or otherwise transfer ... this Lease or any interest herein, sublet the Premises or any portion thereof ... without the prior written consent of Landlord ... If this Lease is assigned, or if the Premises or any part thereof are sublet or occupied by anyone other than Tenant during the Lease Term ... Landlord shall be entitled to fifty percent (50%) of all rents, fees and other considerations paid by such subtenant, assignee or occupant ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.10.insurance_and_indemnification",
+      "title": "10. Insurance and Indemnification",
+      "sourceText": "Tenant shall hold Landlord harmless from and defend and indemnify Landlord against any and all claims or liability for any injury or damage to any person or property whatsoever ... Tenant agrees to purchase at its own expense and to keep in force during the term of this Lease all insurance coverages reasonably required by Landlord ... Landlord shall hold Tenant harmless from and defend and indemnify Tenant against any and all claims or liabilities ... to the extent such injury or damage shall be caused by the grossly negligent acts or omissions of Landlord ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.11.waiver_of_subrogation",
+      "title": "11. Waiver of Subrogation",
+      "sourceText": "Each of Landlord and Tenant hereby releases the other from any and all liability or responsibility to the other ... for any loss or damage to property caused by fire or any other perils insured in policies of insurance covering such property ... Each of Landlord and Tenant agrees that it will request its insurance carriers to include in its policies such a clause or endorsement.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.12.service_and_utilities",
+      "title": "12. Service and Utilities",
+      "sourceText": "Landlord shall maintain the public and common areas of the Building ... Provided the Tenant shall not be in default hereunder ... Landlord agrees to furnish to the Premises during ordinary business hours ... heat and air-conditioning ... janitorial services ... and elevator service ... Tenant agrees to pay Landlord promptly upon demand ... for all such water, electric current or other resource consumed, as shown by said meters ... Any sums payable under this Paragraph 12 shall be considered additional rent ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.13.estoppel_certificate",
+      "title": "13. Estoppel Certificate",
+      "sourceText": "Within seven (7) days following the Commencement Date or any written request which Landlord may make from time to time, Tenant shall execute and deliver to Landlord a certificate substantially in the form attached hereto as Exhibit \"C\" ... Failure of Tenant to execute and deliver such certificate shall at Landlord's option constitute a default hereunder ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.14.holding_over",
+      "title": "14. Holding Over",
+      "sourceText": "If Tenant retains possession of the Premises or any part thereof after such termination ... the daily rental shall ... be equal to 150% of the rental being paid monthly to Landlord under this Lease immediately prior to such termination (prorated on the basis of a 365 day year for each day Tenant remains in possession). Tenant shall also pay to Landlord all damages sustained by Landlord resulting from retention of possession by Tenant ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.15.subordination",
+      "title": "15. Subordination",
+      "sourceText": "This Lease shall be subject and subordinate at all times to: (a) all ground leases or underlying leases ... and (b) the lien or interest of any mortgage or deed to secure debt ... Tenant shall ... attorn to and become the Tenant of the successor in interest to Landlord at the option of such successor in interest.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.16.reentry_by_landlord",
+      "title": "16. Re-Entry By Landlord",
+      "sourceText": "Landlord reserves and shall ... have the right to re-enter the Premises to inspect the same, to supply janitor service and any other service to be provided by Landlord to Tenant hereunder, to show said Premises to prospective purchasers, mortgagees or tenants ... without abatement of rent ... Tenant hereby waives any claim for damages ... unless resulting from the gross negligence or willful misconduct of Landlord.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.17.insolvency_or_bankruptcy",
+      "title": "17. Insolvency or Bankruptcy",
+      "sourceText": "The appointment of a receiver to take possession of all or substantially all of the assets of Tenant, or an assignment of Tenant for the benefit of creditors, or any action taken or suffered by Tenant under any insolvency, bankruptcy, or reorganization act, shall at Landlord's option constitute a breach of this Lease by Tenant. Upon the happening of any such event or at any time thereafter, this Lease shall terminate five (5) days after written notice of termination from Landlord to Tenant.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.18.default_and_remedies",
+      "title": "18. Default and Remedies",
+      "sourceText": "The following events shall be deemed to be events of default by Tenant under this Lease: Tenant shall fail to pay when or before due any sum of money becoming due to be paid to Landlord hereunder ... Tenant shall fail to comply with any term, provision or covenant of this Lease ... Tenant shall create or allow to be created ... any condition or circumstance constituting a hazard ... Tenant shall fail to vacate the Premises immediately upon termination ... Tenant shall assign, sublet or transfer its interest hereunder in violation of this Agreement. Upon the occurrence of any such events of default ... Landlord shall have the option to pursue ... remedies ... including termination, re-entry, recovery of damages, reletting, self-help, and removal or storage of Tenant's property.",
+      "modeled": true,
+      "semanticTag": "tenant_default",
+      "effect": {
+        "kind": "default",
+        "consequences": [
+          "Landlord may terminate this Lease or Tenant's right to possession",
+          "Landlord may re-enter and repossess the Premises",
+          "Tenant remains liable for rent, additional rent, and damages",
+          "Landlord may relet the Premises and recover any deficiency and reletting costs",
+          "Landlord may perform Tenant's obligations and charge the cost as additional rent",
+          "Landlord may remove, store, or dispose of Tenant property as provided in the Lease"
+        ]
+      },
+      "condition": {
+        "type": "upon_default",
+        "events": [
+          "failure to timely pay rent or other sums due",
+          "failure to perform non-monetary covenants after notice and cure periods",
+          "creation of hazardous, nuisance, or offensive conditions",
+          "failure to vacate after termination",
+          "lien, levy, or judgment issues not cured",
+          "unauthorized assignment, subletting, or transfer"
+        ]
+      }
+    },
+    {
+      "id": "clause.19.damage_by_fire",
+      "title": "19. Damage by Fire, Etc.",
+      "sourceText": "If the Building, improvements, or Premises are rendered partially or wholly untenantable by fire or other casualty, and if such damage cannot, in Landlord's reasonable estimation, be materially restored within one hundred eighty (180) days of such damage, then Landlord or Tenant may ... terminate this Lease ... If this Lease shall not be terminated ... and if the Premises is untenantable in whole or in part following such damage, the rent payable during the period in which the Premises is untenantable shall be reduced to such extent, if any, as may be fair and reasonable ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.20.condemnation",
+      "title": "20. Condemnation",
+      "sourceText": "If any substantial part of the Premises should be taken for any public or quasi-public use ... and the taking would prevent or materially interfere with the use of the Premises ... this Lease shall terminate ... If part of the Premises shall be taken ... and this Lease is not terminated ... the rent payable hereunder during the unexpired portion of this Lease shall be reduced to such extent, if any, as may be fair and reasonable ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.21.sale_by_landlord",
+      "title": "21. Sale by Landlord",
+      "sourceText": "In the event of a sale or conveyance by Landlord of the Building, the same shall operate to release Landlord from any future liability upon any of the covenants or conditions ... and in such event Tenant agrees to look solely to the responsibility of the successor in interest of Landlord in and to this Lease. Tenant agrees to attorn to the purchaser or assignee in any such sale.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.22.landlord_right_to_perform",
+      "title": "22. Right of Landlord to Perform",
+      "sourceText": "If Tenant shall fail to perform any acts, covenants or agreements to be performed by Tenant under any of the terms of this Lease or to pay any sum of money, other than rent, required to be paid by it hereunder, and such failure shall continue for fifteen (15) days after written notice thereof by Landlord, Landlord may ... make any such payment or perform any such act ... All sums so paid by Landlord ... together with interest thereon at the Agreed Interest Rate ... shall be payable as additional rent to Landlord on demand.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.23.surrender_of_premises",
+      "title": "23. Surrender of Premises",
+      "sourceText": "Tenant shall, at least one hundred eighty (180) days before the last day of the term hereof, give to Landlord a written notice of intention to surrender the Premises ... At the end of the Lease Term, Tenant agrees to peaceably deliver up to the Landlord possession of the Premises ... Upon request by Landlord ... Tenant shall remove, at Tenant's sole cost, any or all permanent improvements or additions ... Any property not so removed shall be deemed abandoned by the Tenant ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.24.waiver",
+      "title": "24. Waiver",
+      "sourceText": "If either Landlord or Tenant waives the performance of any term, covenant or condition contained in this Lease, such waiver shall not be deemed to be a waiver of any subsequent breach ... Waiver by Landlord of any term, covenant or condition contained in this Lease may only be made by a written document signed by Landlord.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.25.notices",
+      "title": "25. Notices",
+      "sourceText": "Whenever any notice, demand or request is required or permitted hereunder, such notice, demand or request shall be hand-delivered in person, by reputable courier service or sent by United States Mail, registered, postage prepaid, to the addresses set forth below ... Any notice ... shall be deemed sufficiently given ... (i) at the time such notices ... are hand-delivered in person or (ii) on the third day after the mailing ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.26.certain_rights_reserved",
+      "title": "26. Certain Rights Reserved to the Landlord",
+      "sourceText": "Landlord reserves and may exercise the following rights without affecting Tenant's obligations hereunder: (a) To change the name of the Building; ... (e) To close the Building after regular work hours and on legal holidays subject ... to Tenant's right to admittance ... and (f) To take any and all measures ... as may be necessary or desirable for the safety, protection, preservation or security of the Premises or the Building ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.27.abandonment",
+      "title": "27. Abandonment",
+      "sourceText": "Tenant shall not vacate or abandon the Premises at any time during the term, and if Tenant shall abandon, vacate, or surrender said Premises or be dispossessed by process of law, or otherwise, any personal property belonging to Tenant and left on the Premises shall, at the option of Landlord, be deemed to be abandoned and title thereto shall thereupon pass to Landlord.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.28.successors_and_assigns",
+      "title": "28. Successors and Assigns",
+      "sourceText": "Subject to the provisions of Paragraph 9 hereof, the terms, covenants, and conditions contained herein shall be binding upon and inure to the benefit of the heirs, successors, executors, administrators and assigns of the parties hereto.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.29.attorneys_fees",
+      "title": "29. Attorneys' Fees",
+      "sourceText": "In the event that any action or proceeding is brought to enforce any term, covenant or condition of this Lease on the part of Landlord or Tenant, the prevailing party in such litigation shall be entitled to reasonable attorneys' fees to be fixed by the Court in such action or proceeding.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.30.corporate_authority",
+      "title": "30. Corporate Authority",
+      "sourceText": "If Tenant signs as a corporation, each of the persons executing this Lease on behalf of Tenant does hereby covenant and warrant that Tenant is a duly authorized and existing corporation ... that the corporation has full right and authority to enter into this Lease ... Upon Landlord's request, Tenant shall provide Landlord with evidence reasonably satisfactory to Landlord confirming the foregoing covenants and warranties.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.31.mortgage_approvals",
+      "title": "31. Mortgage Approvals",
+      "sourceText": "Any provisions of this Lease requiring the approval or consent of Landlord shall not be deemed to have been unreasonably withheld if any mortgagee ... shall refuse or withhold its approval or consent thereto. Any requirement of Landlord ... imposed pursuant to the direction of any such mortgagee shall be deemed to have been reasonably imposed by Landlord if made in good faith.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.32.miscellaneous",
+      "title": "32. Miscellaneous",
+      "sourceText": "Time is of the essence of this Lease and all of its provisions. This Lease shall in all respects be governed by the laws of the State of Georgia. This Lease, together with its exhibits, contains all the agreements of the parties hereto and supersedes any previous negotiations ... Notwithstanding any other provisions of this Lease to the contrary, if the Commencement Date hereof shall not have occurred before the twentieth (20th) anniversary of the date hereof, this Lease shall be null and void ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.33.landlords_lien",
+      "title": "33. Landlord's Lien",
+      "sourceText": "Landlord shall have and Tenant hereby grants to Landlord a continuing security interest for all rentals and other sums of money becoming due hereunder from Tenant, upon all goods, wares, equipment, fixtures, furniture, inventory, accounts, contract rights, chattel paper and other personal property of Tenant situated on the Premises ... In the event of a default under this Lease, Landlord shall have ... all rights and remedies under the Uniform Commercial Code ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.34.quiet_enjoyment",
+      "title": "34. Quiet Enjoyment",
+      "sourceText": "Landlord represents and warrants that it has full right and authority to enter into this Lease and that Tenant, while paying the rental and performing its other covenants and agreements herein set forth, shall peaceably and quietly have, hold and enjoy the Premises for the term hereof without hindrance or molestation from Landlord subject to the terms and provisions of this Lease.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.35.landlords_liability",
+      "title": "35. Landlord's Liability",
+      "sourceText": "In no event shall Landlord's liability for any breach of this Lease exceed the amount of rental then remaining unpaid for the then current term ... any liability of Landlord hereunder shall be enforceable only out of the interest of Landlord in the Building and the Property and in no event out of the separate assets of Landlord or any shareholder or partner of Landlord.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.36.right_to_relocate",
+      "title": "36. Right to Relocate",
+      "sourceText": "[Intentionally omitted]",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.37.no_estate",
+      "title": "37. No Estate",
+      "sourceText": "This contract shall create the relationship of Landlord and Tenant, and no estate shall pass out of Landlord. Tenant has only a usufruct, not subject to levy and sale and not assignable by Tenant, except as provided for herein and in compliance herewith.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.38.lease_effective_date",
+      "title": "38. Lease Effective Date",
+      "sourceText": "Submission of this instrument for examination or signature by Tenant does not constitute a reservation of or option for lease, and it is not effective as a lease or otherwise until execution and delivery by both Landlord and Tenant.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.39.rules_and_regulations",
+      "title": "39. Rules and Regulations",
+      "sourceText": "Tenant shall faithfully observe and comply with the rules and regulations printed on or annexed to this Lease as Exhibit \"A\" ... and all reasonable modifications thereof and additions thereto from time to time put into effect by Landlord ... Tenant acknowledges and agrees that Landlord may insist upon compliance with and enforce the rules and regulations ... and may ... prohibit any person including any of Tenant's employees ... from entering or remaining upon all or any portion of the Building ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.40.special_stipulations",
+      "title": "40. Special Stipulations",
+      "sourceText": "Special Stipulations to this Lease are set forth on Exhibit \"E\" attached hereto and made a part hereof. In the event of any conflict between any provision set forth in Exhibit \"E\" and any provision contained elsewhere in this Lease, the former in all events shall supersede, prevail and control.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.41.guaranty",
+      "title": "41. Guaranty",
+      "sourceText": "[Intentionally omitted]",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.42.condition",
+      "title": "42. Condition",
+      "sourceText": "[Intentionally omitted]",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.43.brokerage_commissions",
+      "title": "43. Brokerage Commissions",
+      "sourceText": "Tenant represents that Tenant has not engaged or worked with any real estate brokers or agents other than Colliers Spectrum Habif and Childress Klein Properties, Inc. ... Tenant shall indemnify and hold harmless Landlord and Landlord's agents from and against any and all claims for commissions or other compensation ... that may be asserted by any person or entity other than Broker to the extent that Tenant has engaged such person or such claim results from any action of Tenant.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.44.exculpation",
+      "title": "44. Exculpation",
+      "sourceText": "Tenant hereby waives any rights to bring a cause of action against the individuals executing this Lease on behalf of Landlord ... and all persons dealing with Landlord must look solely to Landlord's assets for the enforcement of any claim against Landlord, and the obligations hereunder are not binding upon ... the trustees, officers, directors, employees or agents of STRS.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.exhibit_a.rules_and_regulations",
+      "title": "Exhibit A. Rules and Regulations",
+      "sourceText": "RULES AND REGULATIONS ... Sidewalks, halls, passages, exits, entrances, elevators, escalators and stairways shall not be obstructed ... No sign ... visible from the exterior of Premises shall be ... displayed ... without the prior written consent of Landlord ... Smoking shall be prohibited in all areas of the Building. No Tenant shall allow smoking within the Premises.",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.exhibit_b.work_letter_agreement",
+      "title": "Exhibit B. Work Letter Agreement",
+      "sourceText": "Landlord shall furnish and install within the Premises substantially in accordance with plans and specifications approved by Tenant and Landlord ... The Tenant Allowance shall be the actual cost of said improvements to a limit of (not to exceed) Thirty and No/100 Dollars ($30.00) per rentable square foot ... The total Tenant Allowance for the Premises shall not exceed ... ($1,409,340.00).",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.exhibit_c.estoppel_certificate_form",
+      "title": "Exhibit C. Tenant Lease Estoppel Certificate",
+      "sourceText": "That the Lease calls for monthly rent installments of $75,360.54 ... There is no “free rent” or other concession under the remaining term of the Lease ... That a security deposit in the amount of $77,826.89 is being held by Landlord ... That the Lease provides for a primary term of 86 months ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.exhibit_e.special_stipulations",
+      "title": "Exhibit E. Special Stipulations",
+      "sourceText": "The Security Deposit ... ($77,826.89) and the First Month's Rent ... ($75,360.54) are due and payable upon Lease execution by Tenant ... Tenant shall have one (1) option to renew this Lease for the entire Premises for an additional sixty (60) month term ... Tenant may terminate this Lease at the end of the sixtieth (60th) full calendar month ... paying ... a termination fee equal to all unamortized tenant improvement costs, unamortized commissions ... and free rent ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    },
+    {
+      "id": "clause.exhibit_g.insurance",
+      "title": "Exhibit G. Insurance",
+      "sourceText": "COMMERCIAL GENERAL LIABILITY POLICY ... $ 2,000,000 General Aggregate ... UMBRELLA / EXCESS LIABILITY ... WORKERS COMPENSATION ... TENANT PROPERTY ... All of said policies shall: (i) name Landlord, Landlord’s agent, and Childress Klein Properties, Inc. ... as additional insureds ... and (iii) provide that said insurance shall not be canceled unless thirty (30) days prior written notice shall have been given to Landlord ...",
+      "modeled": false,
+      "semanticTag": "unmodeled_section",
+      "effect": {
+        "kind": "unmodeled"
+      }
+    }
+  ]
+}

@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { callOpenAIJson } from "../llm/openai-json.js";
+import { loadPrompt } from "../util/load-prompt.js";
+import { findUnknownSemanticTags, buildTagRepairPrompt } from "./semantic-tag-validator.js";
+import { KNOWN_SEMANTIC_TAGS, isKnownSemanticTag } from "../types/ir.js";
 import type {
   AccumulationUnit,
   BoolExpr,
@@ -26,7 +29,10 @@ const IrTopSchema = z.object({
   contractId: z.string().min(1),
   title: z.string().min(1),
   jurisdiction: z.string().optional(),
-  currency: z.string().min(1),
+  // Default to USD when the LLM omits or empties currency: many contracts
+  // (securities exchanges, service agreements) don't state one explicitly.
+  // Rejecting the whole IR is worse than a defaulted USD with a warning.
+  currency: z.string().optional().default(""),
   parties: z.array(
     z.object({
       id: z.string().min(1),
@@ -49,10 +55,10 @@ const IrTopSchema = z.object({
         title: z.string().min(1),
         sourceText: z.string().min(1),
         modeled: z.boolean(),
-        // Default "untagged" if the LLM omits the tag — normalizer still
+        // Default "unmodeled_section" if the LLM omits the tag — normalizer still
         // coerces, so this guards against a hard crash on malformed LLM output
         // and lets the pipeline surface the missing tag rather than 500 out.
-        semanticTag: z.string().min(1).optional().default("untagged"),
+        semanticTag: z.string().min(1).optional().default("unmodeled_section"),
       })
       .passthrough(),
   ),
@@ -121,42 +127,6 @@ const irJsonSchema: Record<string, unknown> = {
     },
   },
 };
-
-function findSnippet(text: string, pattern: RegExp, fallback: string): string {
-  const match = text.match(pattern);
-  if (!match || match.index == null) return fallback;
-  const start = Math.max(0, match.index - 120);
-  const end = Math.min(text.length, match.index + 220);
-  return text.slice(start, end).replace(/\s+/g, " ").trim();
-}
-
-function findOptionalSnippet(text: string, pattern: RegExp): string | undefined {
-  const match = text.match(pattern);
-  if (!match || match.index == null) return undefined;
-  return findSnippet(text, pattern, "");
-}
-
-function findSnippetFromLabel(text: string, pattern: RegExp): string | undefined {
-  const match = text.match(pattern);
-  if (!match || match.index == null) return undefined;
-
-  const start = match.index;
-  const end = Math.min(text.length, start + 280);
-  return text.slice(start, end).replace(/\s+/g, " ").trim();
-}
-
-function findAllSnippetsFromLabel(text: string, pattern: RegExp): string[] {
-  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
-  const globalPattern = new RegExp(pattern.source, flags);
-  const snippets: string[] = [];
-  for (const match of text.matchAll(globalPattern)) {
-    if (match.index == null) continue;
-    const start = match.index;
-    const end = Math.min(text.length, start + 280);
-    snippets.push(text.slice(start, end).replace(/\s+/g, " ").trim());
-  }
-  return snippets;
-}
 
 interface NormalizedSourceIndex {
   normalized: string;
@@ -232,32 +202,6 @@ function attachSourceSpans(contractText: string, clauses: Clause[]): Clause[] {
   });
 }
 
-function cleanHeading(value: string): string {
-  return value.replace(/\*\*/g, "").replace(/\s+/g, " ").trim().replace(/[.:]+$/, "");
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-}
-
-function titleFromText(text: string, sourceFile: string): string {
-  const headingMatch = text.match(/^#\s+(.+)$/m);
-  if (headingMatch?.[1]) return cleanHeading(headingMatch[1]);
-
-  return sourceFile.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
-}
-
-function contractIdFrom(title: string, sourceFile: string): string {
-  const titleSlug = slugify(title);
-  if (titleSlug) return titleSlug;
-
-  return slugify(sourceFile.replace(/\.[^.]+$/, "")) || "contract";
-}
-
 function normalizeContractText(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
 }
@@ -288,469 +232,6 @@ function buildMetadata(
       mode: extractionMode,
     },
     ...(extractionWarnings.length > 0 ? { extractionWarnings } : {}),
-  };
-}
-
-function extractJurisdiction(text: string): string | undefined {
-  const match = text.match(/laws of the State of\s+([A-Za-z ]+?)(?:\s+and federal law|[.])/i);
-  return match?.[1]?.trim();
-}
-
-function extractIssuerName(text: string): string | undefined {
-  const match =
-    text.match(/“Credit Union” mean\s+([^.\n]+?)\s+or its successors/i) ||
-    text.match(/write to us at:\s+([^,\n]+(?:Credit Union|Bank|Financial))/i);
-  return match?.[1]?.trim();
-}
-
-function extractQuotedDefinition(
-  text: string,
-  id: string,
-  term: string,
-  meaningPattern: RegExp,
-): Definition | undefined {
-  const sourceText = findOptionalSnippet(text, meaningPattern);
-  const meaningMatch = text.match(meaningPattern);
-  const meaning = meaningMatch?.[1]?.replace(/\s+/g, " ").trim();
-  if (!sourceText || !meaning) return undefined;
-
-  return {
-    id,
-    term,
-    meaning,
-    sourceText,
-  };
-}
-
-function extractDefinitions(text: string): Definition[] {
-  const definitions: Definition[] = [];
-
-  const newBalance = extractQuotedDefinition(
-    text,
-    "def.new_balance",
-    "New Balance",
-    /“new balance”[^.]*?which is\s+(.+?)\./i,
-  );
-  if (newBalance) definitions.push(newBalance);
-
-  const paymentDueDate = extractQuotedDefinition(
-    text,
-    "def.payment_due_date",
-    "Payment due date",
-    /“payment due date”[^.]*?(shown on the periodic statement[^.]*?due)/i,
-  );
-  if (paymentDueDate) definitions.push(paymentDueDate);
-
-  return definitions;
-}
-
-function extractFixedFee(text: string, label: RegExp): number | undefined {
-  for (const snippet of findAllSnippetsFromLabel(text, label)) {
-    const match = snippet.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/);
-    if (!match?.[1] || match.index == null) continue;
-    const none = snippet.match(/\bnone\b/i);
-    if (none && none.index != null && none.index < match.index) continue;
-    return Number.parseFloat(match[1]);
-  }
-  return undefined;
-}
-
-function extractPercentFee(text: string, label: RegExp): number | undefined {
-  for (const snippet of findAllSnippetsFromLabel(text, label)) {
-    const match = snippet.match(/([0-9]+(?:\.[0-9]+)?)\s*%/);
-    if (!match?.[1] || match.index == null) continue;
-    const none = snippet.match(/\bnone\b/i);
-    if (none && none.index != null && none.index < match.index) continue;
-    return Number.parseFloat(match[1]);
-  }
-  return undefined;
-}
-
-function parseMoney(raw: string | undefined): number | undefined {
-  if (!raw) return undefined;
-  const normalized = raw.replace(/,/g, "");
-  const amount = Number.parseFloat(normalized);
-  if (!Number.isFinite(amount) || amount <= 0) return undefined;
-  return amount;
-}
-
-function extractLeaseMonthlyRent(text: string): { amount?: number; sourceText?: string } {
-  const monthlyRentMatch =
-    text.match(/Monthly\s+Rent[\s\S]{0,220}?\$\s*([0-9][0-9,]*(?:\.[0-9]{2})?)/i) ||
-    text.match(/monthly rental installments[\s\S]{0,220}?\$\s*([0-9][0-9,]*(?:\.[0-9]{2})?)/i);
-  if (!monthlyRentMatch) return {};
-
-  const amount = parseMoney(monthlyRentMatch[1]);
-  const sourceText = findOptionalSnippet(
-    text,
-    /Monthly\s+Rent[\s\S]{0,220}?\$\s*[0-9][0-9,]*(?:\.[0-9]{2})?/i,
-  );
-  return {
-    ...(typeof amount === "number" ? { amount } : {}),
-    ...(sourceText ? { sourceText } : {}),
-  };
-}
-
-function extractLeaseParties(text: string): { landlord?: string; tenant?: string } {
-  const match = text.match(
-    /between\s+(.+?)\s+\(hereinafter\s+called\s+"Landlord"\),?\s+and\s+(.+?)\s+\(hereinafter\s+called\s+"Tenant"\)/is,
-  );
-  if (!match) return {};
-
-  const landlord = match[1]?.replace(/\s+/g, " ").trim();
-  const tenant = match[2]?.replace(/\s+/g, " ").trim();
-  return {
-    ...(landlord ? { landlord } : {}),
-    ...(tenant ? { tenant } : {}),
-  };
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function collectGenericHeadings(text: string): string[] {
-  const headings: string[] = [];
-  const seen = new Set<string>();
-  const skip = new Set(["TABLE OF CONTENTS", "WITNESSETH", "PREMISES", "PARAGRAPH", "PAGE"]);
-
-  const pushHeading = (raw: string | undefined): void => {
-    const cleaned = cleanHeading(raw || "");
-    if (!cleaned || cleaned.length < 4) return;
-
-    const compact = cleaned.replace(/\s+/g, " ");
-    const wordCount = compact.split(" ").filter(Boolean).length;
-    if (wordCount > 8) return;
-    if (/[,:;]/.test(compact)) return;
-    const normalized = compact.toUpperCase();
-    if (normalized.includes("LEASE AGREEMENT") || normalized.includes("CREDIT CARD AGREEMENT")) {
-      return;
-    }
-    if (normalized.startsWith("EXHIBIT")) return;
-    if (skip.has(normalized)) return;
-    if (seen.has(normalized)) return;
-    seen.add(normalized);
-    headings.push(compact);
-  };
-
-  for (const match of text.matchAll(/^#{1,6}\s+(.+)$/gm)) {
-    pushHeading(match[1]);
-  }
-
-  for (const match of text.matchAll(/^\s*\d{1,3}\.\s+([A-Za-z][A-Za-z0-9 ,'"()&/\-]{3,100}?)\.\s*$/gm)) {
-    pushHeading(match[1]);
-  }
-
-  for (const match of text.matchAll(/^\s*\d+\s+([A-Z][A-Z /&'()-]{4,})\s+\d+\s*$/gm)) {
-    pushHeading(match[1]);
-  }
-
-  return headings;
-}
-
-function addGenericUnmodeledClauses(text: string, clauses: Clause[]): void {
-  if (clauses.some((clause) => clause.modeled)) return;
-
-  const headings = collectGenericHeadings(text);
-  for (const title of headings) {
-    clauses.push({
-      id: `clause.unmodeled.${slugify(title) || clauses.length + 1}`,
-      title,
-      sourceText: findSnippet(text, new RegExp(escapeRegExp(title), "i"), title),
-      modeled: false,
-      semanticTag: "unmodeled_section",
-      effect: { kind: "unmodeled" },
-    });
-    if (clauses.length >= 3) return;
-  }
-
-  if (clauses.length === 0) {
-    clauses.push({
-      id: "clause.unmodeled.summary",
-      title: "Unsupported contract terms",
-      sourceText: normalizeContractText(text).slice(0, 260),
-      modeled: false,
-      semanticTag: "unmodeled_summary",
-      effect: { kind: "unmodeled" },
-    });
-  }
-}
-
-function heuristicFallbackIr(text: string, sourceFile: string): ContractIR {
-  const title = titleFromText(text, sourceFile);
-  const contractId = contractIdFrom(title, sourceFile);
-  const issuerName = extractIssuerName(text);
-  const isCreditCard = /\b(?:credit\s+card|visa|cardholder)\b/i.test(`${title}\n${text}`);
-  const isLease =
-    !isCreditCard &&
-    /\blease\b/i.test(`${title}\n${text}`) &&
-    /\b(?:monthly rental|monthly rent|landlord|tenant)\b/i.test(text);
-  const jurisdiction = extractJurisdiction(text);
-  const clauses: Clause[] = [];
-
-  if (isLease) {
-    const leaseRent = extractLeaseMonthlyRent(text);
-    if (typeof leaseRent.amount === "number") {
-      clauses.push({
-        id: "clause.obligation.monthly_rent",
-        title: "Monthly rent due",
-        sourceText: leaseRent.sourceText || "Monthly rent payment terms",
-        modeled: true,
-        semanticTag: "rent_obligation",
-        condition: { op: "eq", left: "rent_cycle_active", right: 1 },
-        effect: {
-          kind: "obligation",
-          actor: "tenant",
-          action: "Pay monthly rent by the first day of each month",
-          due: { type: "on_date", value: "first_day_of_month" },
-        },
-      });
-      clauses.push({
-        id: "clause.formula.monthly_rent",
-        title: "Monthly rent amount",
-        sourceText: leaseRent.sourceText || "Monthly rent amount",
-        modeled: true,
-        semanticTag: "base_rent",
-        effect: {
-          kind: "formula",
-          outputVar: "monthly_rent_due",
-          expr: { op: "const", value: leaseRent.amount },
-        },
-      });
-    }
-
-    const leaseDefaultSnippet = findOptionalSnippet(
-      text,
-      /Default and[\s\S]{0,260}?events of default by Tenant under/i,
-    );
-    if (leaseDefaultSnippet) {
-      clauses.push({
-        id: "clause.default.tenant_default",
-        title: "Tenant default and remedies",
-        sourceText: leaseDefaultSnippet,
-        modeled: false,
-        semanticTag: "tenant_default",
-        effect: {
-          kind: "default",
-          consequences: ["Refer to source text for full remedies and cure mechanics"],
-        },
-      });
-    }
-  }
-
-  const minimumPaymentSnippet = findOptionalSnippet(
-    text,
-    /You agree to pay on or before the “payment due date”[\s\S]{0,500}?minimum payment/i,
-  );
-  if (minimumPaymentSnippet) {
-    clauses.push({
-      id: "clause.obligation.minimum_payment",
-      title: "Minimum payment due by statement due date",
-      sourceText: minimumPaymentSnippet,
-      modeled: true,
-      semanticTag: "minimum_payment_obligation",
-      effect: {
-        kind: "obligation",
-        actor: isCreditCard ? "cardholder" : "party",
-        action: "Pay at least the minimum payment by due date",
-        due: { type: "on_date", value: "statement_due_date" },
-      },
-    });
-  }
-
-  const minimumPaymentFormulaSnippet = findOptionalSnippet(
-    text,
-    /minimum payment[^.]*?3%\s+of the New Balance or \$15\.00[^.]*?\./i,
-  );
-  if (minimumPaymentFormulaSnippet) {
-    clauses.push({
-      id: "clause.formula.minimum_payment",
-      title: "Minimum payment formula",
-      sourceText: minimumPaymentFormulaSnippet,
-      modeled: true,
-      semanticTag: "minimum_payment_formula",
-      effect: {
-        kind: "formula",
-        outputVar: "minimum_payment_due",
-        expr: {
-          op: "max",
-          args: [
-            {
-              op: "mul",
-              args: [
-                { op: "var", name: "new_balance" },
-                { op: "const", value: 0.03 },
-              ],
-            },
-            { op: "const", value: 15 },
-          ],
-        },
-      },
-    });
-  }
-
-  const lateFee = extractFixedFee(text, /Late Payment Fee/i);
-  if (typeof lateFee === "number") {
-    clauses.push({
-      id: "clause.fee.late_payment",
-      title: "Late payment fee",
-      sourceText: findSnippetFromLabel(text, /Late Payment Fee/i) || "Late payment fee",
-      modeled: true,
-      semanticTag: "late_payment_fee",
-      effect: {
-        kind: "payment",
-        payer: isCreditCard ? "cardholder" : "party",
-        payee: "issuer",
-        amount: { op: "const", value: lateFee },
-      },
-    });
-  }
-
-  const overLimitFee = extractFixedFee(text, /Over(?: Credit Limit|[- ]the-Credit Limit) Fee/i);
-  if (typeof overLimitFee === "number") {
-    clauses.push({
-      id: "clause.fee.over_limit",
-      title: "Over-limit fee",
-      sourceText:
-        findSnippetFromLabel(text, /Over(?: Credit Limit|[- ]the-Credit Limit) Fee/i) ||
-        "Over credit limit fee",
-      modeled: true,
-      semanticTag: "over_limit_fee",
-      effect: {
-        kind: "payment",
-        payer: isCreditCard ? "cardholder" : "party",
-        payee: "issuer",
-        amount: { op: "const", value: overLimitFee },
-      },
-    });
-  }
-
-  const creditLimitSnippet = findOptionalSnippet(
-    text,
-    /Credit Limits\.[\s\S]{0,240}?outstanding balance[^.]*?exceed your credit limit/i,
-  );
-  if (creditLimitSnippet) {
-    clauses.push({
-      id: "clause.obligation.credit_limit",
-      title: "Stay within credit limit",
-      sourceText: creditLimitSnippet,
-      modeled: false,
-      semanticTag: "credit_limit_obligation",
-      effect: {
-        kind: "obligation",
-        actor: isCreditCard ? "cardholder" : "party",
-        action: "Keep the outstanding balance within the credit limit",
-        due: { type: "on_date", value: "ongoing" },
-      },
-    });
-  }
-
-  const returnedPaymentFee = extractFixedFee(text, /Returned Payment Fee/i);
-  if (typeof returnedPaymentFee === "number") {
-    clauses.push({
-      id: "clause.fee.returned_payment",
-      title: "Returned payment fee",
-      sourceText:
-        findSnippetFromLabel(text, /Returned Payment Fee/i) || "Returned payment fee",
-      modeled: false,
-      semanticTag: "returned_payment_fee",
-      effect: {
-        kind: "payment",
-        payer: isCreditCard ? "cardholder" : "party",
-        payee: "issuer",
-        amount: { op: "const", value: returnedPaymentFee },
-      },
-    });
-  }
-
-  const foreignTxnFee = extractPercentFee(text, /Foreign Transaction/i);
-  if (typeof foreignTxnFee === "number") {
-    // Percent fee on a transaction amount: amount = (rate / 100) * transaction_amount.
-    const rateAsFraction = foreignTxnFee / 100;
-    clauses.push({
-      id: "clause.fee.foreign_transaction",
-      title: "Foreign transaction fee",
-      sourceText:
-        findSnippetFromLabel(text, /Foreign Transaction/i) || "Foreign transaction fee",
-      modeled: false,
-      semanticTag: "foreign_transaction_fee",
-      effect: {
-        kind: "payment",
-        payer: isCreditCard ? "cardholder" : "party",
-        payee: "issuer",
-        amount: {
-          op: "mul",
-          args: [
-            { op: "const", value: rateAsFraction },
-            { op: "var", name: "transaction_amount" },
-          ],
-        },
-      },
-    });
-  }
-
-  const illegalUseDefaultSnippet = findOptionalSnippet(
-    text,
-    /illegal use of the Card will be deemed an act of default/i,
-  );
-  if (illegalUseDefaultSnippet) {
-    clauses.push({
-      id: "clause.default.illegal_use",
-      title: "Default on illegal card use",
-      sourceText: illegalUseDefaultSnippet,
-      modeled: false,
-      semanticTag: "illegal_use_default",
-      effect: {
-        kind: "default",
-        consequences: ["Default may be asserted by the credit union"],
-      },
-    });
-  }
-
-  addGenericUnmodeledClauses(text, clauses);
-  const clausesWithSpans = attachSourceSpans(text, clauses);
-
-  return {
-    contractId,
-    title,
-    ...(jurisdiction ? { jurisdiction } : {}),
-    currency: "USD",
-    parties: [
-      ...(isLease
-        ? (() => {
-            const leaseParties = extractLeaseParties(text);
-            const parties: ContractIR["parties"] = [];
-            parties.push({
-              id: "landlord",
-              role: "landlord",
-              name: leaseParties.landlord || "Landlord",
-            });
-            parties.push({
-              id: "tenant",
-              role: "tenant",
-              name: leaseParties.tenant || "Tenant",
-            });
-            return parties;
-          })()
-        : []),
-      ...(issuerName
-        ? [
-            {
-              id: "issuer",
-              role: "issuer",
-              name: issuerName,
-            },
-          ]
-        : []),
-      {
-        id: isCreditCard ? "cardholder" : isLease ? "tenant" : "counterparty",
-        role: isCreditCard ? "borrower" : isLease ? "tenant" : "counterparty",
-        name: isCreditCard ? "Cardholder" : isLease ? "Tenant" : "Counterparty",
-      },
-    ].filter((party, index, arr) => arr.findIndex((p) => p.id === party.id) === index),
-    definitions: extractDefinitions(text),
-    clauses: clausesWithSpans,
-    metadata: buildMetadata(text, sourceFile, clausesWithSpans, "llm"),
   };
 }
 
@@ -1031,12 +512,23 @@ function normalizeClause(rawClause: Record<string, unknown>, warnings: string[])
       ? rawClause.semanticTag
       : "unmodeled_section";
   const clauseId = String(rawClause.id);
+  const rawModeled = Boolean(rawClause.modeled);
+  // Honest-posture coercion: an "unmodeled_section" tag means the extractor
+  // couldn't pick a real slot in the closed vocab. A modeled:true flag on
+  // top of that is self-contradictory — the executor has nothing to dispatch
+  // on. Coerce to modeled:false so downstream ledgers/English reflect reality.
+  const modeled = rawModeled && semanticTag !== "unmodeled_section";
+  if (rawModeled && !modeled) {
+    warnings.push(
+      `${clauseId}: modeled=true with semanticTag=unmodeled_section; coerced to modeled=false`,
+    );
+  }
   return {
     id: clauseId,
     title: String(rawClause.title),
     sourceText: String(rawClause.sourceText),
     ...(sourceSpan ? { sourceSpan } : {}),
-    modeled: Boolean(rawClause.modeled),
+    modeled,
     semanticTag,
     ...(condition ? { condition } : {}),
     effect: normalizeEffect(rawClause, warnings, clauseId),
@@ -1049,10 +541,16 @@ function normalizeIr(raw: unknown, sourceFile: string, contractText: string): Co
   const clauses = parsed.clauses.map((c) => normalizeClause(c, warnings));
   const clausesWithSpans = attachSourceSpans(contractText, clauses);
 
+  let currency = parsed.currency.trim();
+  if (!currency) {
+    warnings.push("currency: LLM omitted or empty; defaulting to USD");
+    currency = "USD";
+  }
+
   return {
     contractId: parsed.contractId,
     title: parsed.title,
-    currency: parsed.currency,
+    currency,
     parties: parsed.parties,
     definitions: parsed.definitions,
     clauses: clausesWithSpans,
@@ -1062,31 +560,7 @@ function normalizeIr(raw: unknown, sourceFile: string, contractText: string): Co
 }
 
 export async function extractIr(options: ExtractIrOptions): Promise<ContractIR> {
-  const systemPrompt = [
-    "Extract a compact executable contract IR from markdown text.",
-    "Keep only clauses that can be executed deterministically.",
-    "Output strict JSON that matches the provided schema.",
-    "Path B shape requirements:",
-    "- Clause shape is { id, title, sourceText, modeled, semanticTag, condition?, effect }.",
-    "- Clause-level `kind` is obsolete. Put the discriminator at `effect.kind` only.",
-    "- Allowed `effect.kind` values: payment, obligation, formula, accumulation, indemnification, default, unmodeled.",
-    "- If a clause is not deterministically executable, set `modeled: false` and `effect: { \"kind\": \"unmodeled\" }`.",
-    "- Keep `semanticTag` specific and domain-meaningful (open vocabulary).",
-    "Numeric fields (Expr grammar):",
-    "- `effect.amount`, `effect.cap`, `effect.rate`, and `effect.expr` carry an Expr tree — NEVER a bare number, NEVER an object like {value: 25000} without an `op`.",
-    "- Expr nodes: {op:\"const\", value:<number>} | {op:\"var\", name:<string>} | {op:<\"add\"|\"sub\"|\"mul\"|\"div\"|\"max\"|\"min\">, args:[Expr, Expr]}.",
-    "- Always parse literal dollar amounts, percentages, and per-unit rates from the source text into `const` Exprs. If the contract states $25,000, emit {op:\"const\", value:25000} — never {op:\"const\", value:0}.",
-    "- For percentages, convert to a decimal fraction: \"3%\" → {op:\"const\", value:0.03}.",
-    "Worked examples:",
-    "- \"Buyer shall pay $25,000 at closing\" →",
-    "  effect: {kind:\"payment\", payer:\"party-buyer\", payee:\"party-seller\", amount:{op:\"const\", value:25000}}.",
-    "- \"A late fee of $1,000 per day, capped at $30,000\" →",
-    "  effect: {kind:\"accumulation\", per:\"day\", rate:{op:\"const\", value:1000}, cap:{op:\"const\", value:30000}}.",
-    "- \"Interest of 3% of the unpaid balance\" →",
-    "  effect: {kind:\"formula\", outputVar:\"interest_due\", expr:{op:\"mul\", args:[{op:\"const\", value:0.03}, {op:\"var\", name:\"unpaid_balance\"}]}}.",
-    "- \"The total purchase price is $500,000\" (definitional — carry the number as a const formula so it is non-zero) →",
-    "  effect: {kind:\"formula\", outputVar:\"purchase_price\", expr:{op:\"const\", value:500000}}.",
-  ].join("\n");
+  const systemPrompt = loadPrompt("prompts/ir-extraction.md");
 
   const userPrompt = `Source file: ${options.sourceFile}\n\nContract markdown:\n${options.contractText}`;
 
@@ -1095,9 +569,52 @@ export async function extractIr(options: ExtractIrOptions): Promise<ContractIR> 
       systemPrompt,
       userPrompt,
       schema: irJsonSchema,
+      // gpt-5.4 with reasoning="high" can exceed Node fetch's 5-min
+      // headersTimeout on full contracts + complex schema. "medium" is
+      // the cost/quality sweet spot that stays within default timeouts.
+      reasoningEffort: "medium",
     });
 
-    return normalizeIr(llmResult, options.sourceFile, options.contractText);
+    const ir = normalizeIr(llmResult, options.sourceFile, options.contractText);
+
+    // Validate semanticTags against the closed vocabulary.
+    const unknown = findUnknownSemanticTags(ir.clauses);
+    if (unknown.length === 0) {
+      return ir;
+    }
+
+    console.warn(
+      `[extract-ir] semanticTag drift detected (${unknown.length} clause(s)); retrying once. Offenders:`,
+      unknown,
+    );
+
+    // One repair retry — ask the LLM to fix the offending tags.
+    const repairPrompt = buildTagRepairPrompt(unknown, KNOWN_SEMANTIC_TAGS);
+    const repairedResult = await callOpenAIJson<unknown>({
+      systemPrompt,
+      userPrompt: `${userPrompt}\n\n---\nREPAIR INSTRUCTIONS:\n${repairPrompt}`,
+      schema: irJsonSchema,
+      reasoningEffort: "medium",
+    });
+    const repairedIr = normalizeIr(repairedResult, options.sourceFile, options.contractText);
+
+    // Coerce any remaining unknowns to unmodeled_section.
+    const coercedIds: string[] = [];
+    for (const clause of repairedIr.clauses) {
+      if (!isKnownSemanticTag(clause.semanticTag)) {
+        coercedIds.push(`${clause.id} (${clause.semanticTag})`);
+        clause.semanticTag = "unmodeled_section";
+        clause.modeled = false;
+      }
+    }
+    if (coercedIds.length > 0) {
+      console.warn(
+        `[extract-ir] coerced ${coercedIds.length} clause(s) to unmodeled_section after repair retry failed. ` +
+        `This is the signal the prompt needs tightening. Clauses:`,
+        coercedIds,
+      );
+    }
+    return repairedIr;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`IR extraction failed in LLM-required mode: ${message}`);

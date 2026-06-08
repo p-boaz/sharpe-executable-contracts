@@ -1,8 +1,1 @@
-Generate one concrete scenario with realistic dates/events/amounts for the provided contract IR.
-
-Rules:
-- Provide a full event timeline.
-- Make assumptions explicit and inspectable.
-- Keep `initialState` generic and tied to IR-extracted fields when possible.
-- If the IR does not support credit-card execution semantics, return a plausible generic scenario rather than inventing unsupported finance events.
-- Output strict JSON only.
+Generate one concrete execution scenario from contract markdown and extracted IR. Return strict JSON only. The scenario must be human-inspectable, include explicit assumptions, and satisfy every requirement listed in the user prompt. Always include a `summary` field: one to three plain-English sentences describing what this scenario exercises (the shape of the timeline and the outcome it probes), scaled to scenario complexity, written for a UI reader who hasn't read the contract. When the user prompt provides modeled obligation clause ids, bind performing events to the right id by setting event.metadata.clauseId to the exact id string; the downstream executor uses this as its primary match rule.

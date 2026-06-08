@@ -1,0 +1,81 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A cardholder makes purchases during a billing cycle, receives a statement with a $30 minimum payment due, and then pays only $20 after the due date. The scenario is designed to exercise the late-payment path while keeping the account within the credit limit, so the minimum-payment obligation is not timely satisfied and default/late-fee consequences may be triggered.",
+  "assumptions": [
+    "The billing cycle closes on 2025-03-31 and the resulting periodic statement sets a payment due date of 2025-04-25.",
+    "The statement new balance is $1000.00, so the contractual minimum payment is 3% of new balance = $30.00, which is greater than $15.00.",
+    "The late payment of $20.00 is received and posted on 2025-04-28 using a standard approved payment method.",
+    "The account credit limit is $2000.00 throughout the scenario, so none of the card activity causes the outstanding balance to exceed the credit limit.",
+    "An event referencing clause_4_credit_limits is included to bind that modeled obligation and represent that the cardholder stayed within the credit limit; this archetype treats that obligation as satisfied, not breached.",
+    "Only the modeled obligations identified in the prompt are explicitly bound with clauseId metadata; statement close and due check are operational timeline events rather than performances of modeled obligations."
+  ],
+  "initialState": {
+    "contractId": "westex-visa-credit-card-agreement",
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 2000,
+    "previousBalance": 0,
+    "billingCycleStart": "2025-03-01",
+    "billingCycleEnd": "2025-03-31",
+    "dueDate": "2025-04-25",
+    "aprPurchases": 0.109,
+    "newBalanceAtStatement": 1000,
+    "minimumPaymentDue": 30,
+    "accountStatus": "open"
+  },
+  "events": [
+    {
+      "id": "evt1",
+      "date": "2025-03-05",
+      "type": "purchase",
+      "amount": 400,
+      "metadata": {
+        "clauseId": "clause_4_credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt2",
+      "date": "2025-03-18",
+      "type": "purchase",
+      "amount": 600,
+      "metadata": {
+        "clauseId": "clause_4_credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt3",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 1000,
+      "metadata": {}
+    },
+    {
+      "id": "evt4",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 30,
+      "metadata": {}
+    },
+    {
+      "id": "evt5",
+      "date": "2025-04-28",
+      "type": "payment",
+      "amount": 20,
+      "metadata": {
+        "clauseId": "clause_5_minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt6",
+      "date": "2025-04-28",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "scenarioId": "credit_card_on_time_full_payment_001",
+  "summary": "A cardholder makes a single purchase well within the credit limit, receives a statement, and then pays the full statement balance before the due date. This scenario exercises timely satisfaction of the minimum-payment obligation while preserving the purchase grace period and avoiding any late or over-limit fee outcome.",
+  "assumptions": [
+    "The account begins this billing cycle with no previous balance, so the issuer must provide at least a 25-day grace period on new purchases under clause.6.grace_period.",
+    "The purchase is a domestic card purchase, not a cash advance, balance transfer, ATM withdrawal, or international transaction.",
+    "The credit limit is $1000.00, and the single purchase of $200.00 does not exceed that limit, satisfying clause.4.credit_limits.",
+    "The periodic statement closes on 2025-03-31 and shows a new balance of $200.00; the minimum payment would therefore be $15.00 under the contract formula, but the cardholder instead pays the full $200.00.",
+    "The payment is made through an approved standard method and is credited on the date received, with no returned payment and no processing delay.",
+    "Because the full statement balance is paid on or before the due date, the archetype expects no late fee, no over-limit fee, and no purchase interest charge for this cycle."
+  ],
+  "initialState": {
+    "accountStatus": "open",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "statementBalance": 0,
+    "dueDate": "2025-04-25",
+    "aprPurchases": "7.9-15.9%",
+    "aprCashAdvances": "7.9-15.9%",
+    "previousStatementPaidInFull": true,
+    "noPreviousBalance": true
+  },
+  "events": [
+    {
+      "id": "ev1",
+      "date": "2025-03-10",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "ev2",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.6.grace_period",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "ev3",
+      "date": "2025-04-20",
+      "type": "payment",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "ev4",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "actor": "party-issuer"
+      }
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "scenarioId": "credit-card-over-limit-statement-close-001",
+  "summary": "The cardholder starts with an open credit line and makes purchases during a billing cycle that push the balance above the credit limit by the statement closing date. The scenario is designed to show an over-limit condition at statement close and then carries the balance into the payment due date without a payment, leaving the minimum-payment obligation unmet.",
+  "assumptions": [
+    "The account is open and usable at the start of the scenario, with no prior balance and no prior disputed transactions.",
+    "The credit limit is $1000.00 for this cycle.",
+    "All purchases are authorized and posted in the same billing cycle before the statement closes.",
+    "The issuer permits the purchases to post even though the resulting balance exceeds the credit limit, so the over-limit condition is visible at statement close.",
+    "No fees, interest charges, credits, or cash advances are included before statement close unless explicitly listed as events.",
+    "A statement is generated on the statement_close date and reflects a new balance equal to the sum of posted purchases in this scenario.",
+    "The minimum payment obligation under clause-5-minimum-payment-obligation arises from the statement, but this archetype intentionally does not include a payment by the due date so the obligation is treated as unmet."
+  ],
+  "initialState": {
+    "currency": "USD",
+    "creditLimit": 1000,
+    "accountStatus": "open",
+    "previousBalance": 0,
+    "availableCredit": 1000,
+    "billingCycleStart": "2026-01-01"
+  },
+  "events": [
+    {
+      "id": "evt-1-purchase",
+      "date": "2026-01-05",
+      "type": "purchase",
+      "amount": 650,
+      "metadata": {
+        "clauseId": "clause-4-credit-limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-2-purchase",
+      "date": "2026-01-12",
+      "type": "purchase",
+      "amount": 425,
+      "metadata": {
+        "clauseId": "clause-4-credit-limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-3-statement-close",
+      "date": "2026-01-31",
+      "type": "statement_close",
+      "amount": 1075,
+      "metadata": {
+        "actor": "party-credit_union",
+        "statementBalance": 1075,
+        "creditLimit": 1000,
+        "overLimit": true
+      }
+    },
+    {
+      "id": "evt-4-notice-min-payment-due",
+      "date": "2026-01-31",
+      "type": "notice",
+      "amount": 32.25,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-credit_union",
+        "newBalance": 1075,
+        "minimumPayment": 32.25,
+        "paymentDueDate": "2026-02-25"
+      }
+    },
+    {
+      "id": "evt-5-due-check",
+      "date": "2026-02-25",
+      "type": "due_check",
+      "amount": 32.25,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder",
+        "status": "unmet"
+      }
+    }
+  ]
+}

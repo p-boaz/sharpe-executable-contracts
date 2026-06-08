@@ -1,0 +1,80 @@
+{
+  "scenarioId": "credit-card-over-limit-statement-close-001",
+  "summary": "The cardholder makes purchases early in the billing cycle that push the account balance above the numeric credit limit by the statement close date. The scenario includes the statement close that exposes the over-limit condition, while also including placeholder obligation-linked events for minimum payment and grace-period logic that are not actually completed within this archetype.",
+  "assumptions": [
+    "The account starts a new billing cycle with no previous balance, no accrued interest, and no prior unpaid fees.",
+    "The credit limit is $500.00, and all purchases in this scenario are authorized and posted during the same billing cycle.",
+    "The issuer allows transactions to post even though they cause the account balance to exceed the credit limit, so the over-limit condition is visible at statement close.",
+    "Because this archetype focuses on the over-limit condition at statement close, the minimum-payment obligation is included only as a future due-check placeholder and is intentionally unmet within the scenario timeline.",
+    "Because there is no payment made within the 25-day grace window after statement close in this scenario, the issuer's grace-period obligation is referenced by a notice event to indicate the grace window exists but is not completed or tested to full performance here.",
+    "No cash advances, returned payments, illegal use, or billing disputes occur in this scenario."
+  ],
+  "initialState": {
+    "contractId": "WesTex-VISA-credit-card-agreement",
+    "currency": "USD",
+    "accountId": "acct-001",
+    "cardholderId": "party-cardholder",
+    "issuerId": "party-issuer",
+    "creditLimit": 500,
+    "previousBalance": 0,
+    "currentBalance": 0,
+    "availableCredit": 500,
+    "billingCycleStart": "2026-01-01",
+    "statementCloseDate": "2026-01-31",
+    "paymentDueDate": "2026-02-25",
+    "aprPurchases": 0.109,
+    "noPreviousBalance": true,
+    "paidPreviousStatementInFull": true
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2026-01-05",
+      "type": "purchase",
+      "amount": 320,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2026-01-18",
+      "type": "purchase",
+      "amount": 260,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2026-01-31",
+      "type": "statement_close",
+      "amount": 580,
+      "metadata": {
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2026-01-31",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause-6-grace-period-obligation",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2026-02-25",
+      "type": "due_check",
+      "amount": 17.4,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

@@ -34,9 +34,8 @@ it's missing. Here's exactly where it's needed and where it isn't:
 | `pnpm run determinism` | yes (runs extract + scenario twice) | `scripts/` determinism driver |
 | `pnpm run check:expectations` | only when cached IR is missing or `--extract` is passed | defaults to cached `out/<contractId>/ir.json` |
 | `pnpm test` | no (LLM-dependent tests auto-skip when the key is unset) | see `tests/pipeline.test.ts` for which tests skip |
-| Web "Process Contract" | yes | `web/app/api/run-contract/route.ts` shells out to the CLI |
 
-`OPENAI_MODEL` defaults to `gpt-5-mini` (see `.env.example`). Cached
+`OPENAI_MODEL` defaults to `gpt-5.4` (see `.env.example`) — the higher-capacity frontier model chosen for extraction recall. Cached
 artifacts for the two executor-supported contracts (credit-card +
 lease) are committed under `out/credit-card-agreement/` and
 `out/galleria-atlanta-office-lease-american-safety-insurance-2006/` so
@@ -77,33 +76,6 @@ an OpenAI key. Other runs populate `out/` locally and are gitignored.
    against cached IR at `out/<contractId>/ir.json`. When cached IR is
    missing (or `--extract` is passed), the script falls back to live
    extraction and requires `OPENAI_API_KEY`.
-
-## Browser demo (optional)
-
-A Next.js viewer lives in `web/`. Contract-first: the dropdown reads from
-`contracts/*.md` (excluding `SOURCES.md`), and "Process Contract" POSTs to
-`web/app/api/run-contract/route.ts`, which shells out to the same CLI
-pipeline (`pnpm run run`) into `out/_web_runs/<contract-key>/`. A second
-route (`web/app/api/upload-contract`) accepts held-out `.md` uploads;
-`web/app/api/execute` re-runs execution only.
-
-Layout is a four-step vertical flow that mirrors the pipeline:
-**Step 1 · Contract → IR** (with a collapsible "Show intermediate
-representation" drawer exposing the raw IR clauses),
-**Step 2 · Generate and Pick a Scenario**,
-**Step 3 · Run the contract** (executor, no LLM),
-**Step 4 · Deterministic executable → English** (the regenerated
-`english.txt`, produced from IR + scenario + execution). Hovering a
-ledger row, an IR clause, or an English clause line highlights its
-counterparts across the other steps.
-
-1. `cd web && pnpm install`
-2. Ensure the Next.js process sees `OPENAI_API_KEY` (inherit from your
-   shell or drop it in `web/.env.local`).
-3. `pnpm dev` → open `http://localhost:3000`.
-4. Pick any bundled contract, click "Process Contract", then inspect
-   scenarios and execution.
-5. (Optional) upload a held-out `.md` in the UI and process it the same way.
 
 ## Design choices
 

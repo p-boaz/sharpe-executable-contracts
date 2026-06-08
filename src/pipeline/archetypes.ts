@@ -1,4 +1,4 @@
-import type { ContractIR } from "../types/ir.js";
+import type { ContractIR, KnownSemanticTag } from "../types/ir.js";
 
 export type ContractFamily = "credit_card" | "lease" | "generic";
 
@@ -72,37 +72,34 @@ function hasModeledClause(
 
 export function contractFamily(ir: ContractIR): ContractFamily {
   const title = `${ir.title} ${ir.contractId}`.toLowerCase();
-  const hasCreditSignals =
-    title.includes("credit") ||
-    title.includes("card") ||
-    hasModeledClause(
-      ir,
-      (clause) =>
-        clause.effect.kind === "payment" &&
-        (clause.semanticTag === "late_payment_fee" ||
-          clause.semanticTag === "over_limit_fee"),
-    ) ||
-    hasModeledClause(
-      ir,
-      (clause) =>
-        clause.effect.kind === "formula" &&
-        clause.effect.outputVar === "minimum_payment_due",
-    );
-  const hasLeaseSignals =
-    title.includes("lease") ||
-    hasModeledClause(
-      ir,
-      (clause) =>
-        clause.effect.kind === "obligation" &&
-        clause.id === "clause.obligation.monthly_rent",
-    ) ||
-    hasModeledClause(
-      ir,
-      (clause) =>
-        clause.effect.kind === "formula" &&
-        clause.effect.outputVar === "monthly_rent_due",
-    );
 
+  // Lease signals rely on lease-specific tags that cannot appear on credit cards.
+  const hasLeaseSpecificTag = hasModeledClause(
+    ir,
+    (clause) =>
+      clause.semanticTag === ("rent_obligation" satisfies KnownSemanticTag) ||
+      clause.semanticTag === ("base_rent" satisfies KnownSemanticTag) ||
+      clause.semanticTag === ("tenant_default" satisfies KnownSemanticTag),
+  );
+  const hasLeaseSignals = title.includes("lease") || hasLeaseSpecificTag;
+
+  // Credit-card signals must include at least one credit-card-specific tag.
+  // `late_payment_fee` alone is ambiguous (leases also have late-rent fees).
+  const hasCreditCardSpecificTag = hasModeledClause(
+    ir,
+    (clause) =>
+      clause.semanticTag === ("minimum_payment_obligation" satisfies KnownSemanticTag) ||
+      clause.semanticTag === ("minimum_payment_formula" satisfies KnownSemanticTag) ||
+      clause.semanticTag === ("over_limit_fee" satisfies KnownSemanticTag) ||
+      clause.semanticTag === ("credit_limit_obligation" satisfies KnownSemanticTag) ||
+      clause.semanticTag === ("foreign_transaction_fee" satisfies KnownSemanticTag),
+  );
+  const hasCreditSignals =
+    hasCreditCardSpecificTag || title.includes("credit card") || title.includes("cardholder");
+
+  // Specific signals win over ambiguous ones: a lease with a late-rent fee
+  // stays a lease unless it ALSO has credit-card-specific tags.
+  if (hasLeaseSpecificTag && !hasCreditCardSpecificTag) return "lease";
   if (hasCreditSignals) return "credit_card";
   if (hasLeaseSignals) return "lease";
   return "generic";

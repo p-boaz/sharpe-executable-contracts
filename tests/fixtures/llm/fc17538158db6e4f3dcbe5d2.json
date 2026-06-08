@@ -1,0 +1,95 @@
+{
+  "scenarioId": "westex-visa-credit-card-agreement-on-time-full-payment-001",
+  "summary": "A cardholder makes ordinary purchases during a billing cycle, stays below the credit limit, receives a statement, and then pays the full statement balance before the due date. The scenario is designed to show an on-time full-payment path with a valid grace-period setup and no late fee or over-limit fee.",
+  "assumptions": [
+    "The account has no previous balance at the start of this billing cycle, so the issuer's grace-period obligation is triggered for new purchases.",
+    "The credit limit is $1000.00 and total posted purchases in the cycle remain below that limit at all times.",
+    "The periodic statement for this cycle closes on 2025-03-31 and shows a payment due date of 2025-04-25, providing at least 25 days after statement close.",
+    "The cardholder pays the full new balance shown on the statement on 2025-04-20, which is on or before the due date.",
+    "No cash advances, international transactions, returned payments, delinquency, or other fee-triggering events occur in this scenario.",
+    "The statement reflects only purchases in this cycle and no prior unpaid interest or fees."
+  ],
+  "initialState": {
+    "contractId": "westex-visa-credit-card-agreement",
+    "accountId": "acct-001",
+    "currency": "USD",
+    "dueDate": "2025-04-25",
+    "billingCycleStart": "2025-03-01",
+    "billingCycleEnd": "2025-03-31",
+    "previousBalance": 0,
+    "creditLimit": 1000,
+    "aprPurchases": 0.109,
+    "accountBalance": 0,
+    "minimumPayment": 15,
+    "newBalance": 180
+  },
+  "events": [
+    {
+      "id": "evt-1",
+      "date": "2025-03-05",
+      "type": "purchase",
+      "amount": 80,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-2",
+      "date": "2025-03-18",
+      "type": "purchase",
+      "amount": 100,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-3",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 180,
+      "metadata": {
+        "clauseId": "clause-6-grace-period",
+        "actor": "party-issuer",
+        "previousBalance": 0,
+        "newBalance": 180,
+        "minimumPayment": 15,
+        "paymentDueDate": "2025-04-25"
+      }
+    },
+    {
+      "id": "evt-4",
+      "date": "2025-04-20",
+      "type": "payment",
+      "amount": 180,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder",
+        "appliesToStatementDate": "2025-03-31"
+      }
+    },
+    {
+      "id": "evt-5",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-issuer",
+        "result": "paid_on_time_in_full"
+      }
+    },
+    {
+      "id": "evt-6",
+      "date": "2025-04-25",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause-6-grace-period",
+        "actor": "party-issuer",
+        "result": "no_interest_on_purchases_no_late_fee_no_over_limit_fee"
+      }
+    }
+  ]
+}

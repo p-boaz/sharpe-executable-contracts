@@ -1,0 +1,63 @@
+{
+  "scenarioId": "westex-visa-over-limit-statement-close-001",
+  "summary": "The cardholder starts a billing cycle with no balance, makes purchases that push the account above its $1,000 credit limit, and reaches statement close while still over limit. The scenario is designed to test over-limit behavior at statement close and then includes a later minimum-payment event tied to the modeled payment obligation.",
+  "assumptions": [
+    "The account is an open and usable credit card account at the start of the scenario, with a disclosed credit limit of $1,000.00.",
+    "The issuer authorizes and posts purchases even though the resulting outstanding balance exceeds the credit limit, so the account can be over limit at statement close.",
+    "No fees or interest are separately modeled before statement close in this scenario; the over-limit condition is tested using posted purchase balances alone.",
+    "A periodic statement is generated on the statement_close date, and the new balance on that date remains above the credit limit.",
+    "The minimum payment due on the statement is treated as 3% of the new balance or $15.00, whichever is greater, per the contract's formula.",
+    "Although the archetype focuses on becoming over limit at statement close, a later payment event is included to bind to the modeled minimum-payment obligation clause.",
+    "The credit-limit obligation is inherently violated by the purchases in this archetype; purchase events are still tagged to clause.obligation.credit_limit so the executor can associate the conduct with that modeled obligation, and the assumption here is that the obligation is treated as unmet rather than performed."
+  ],
+  "initialState": {
+    "contractId": "westex-visa-credit-card-agreement",
+    "currency": "USD",
+    "accountStatus": "open",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "statementCycleStart": "2026-01-01",
+    "statementCycleEnd": "2026-01-31"
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2026-01-05",
+      "type": "purchase",
+      "amount": 650,
+      "metadata": {
+        "clauseId": "clause.obligation.credit_limit",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2026-01-18",
+      "type": "purchase",
+      "amount": 500,
+      "metadata": {
+        "clauseId": "clause.obligation.credit_limit",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2026-01-31",
+      "type": "statement_close",
+      "amount": 1150,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2026-02-20",
+      "type": "payment",
+      "amount": 34.5,
+      "metadata": {
+        "clauseId": "clause.obligation.minimum_payment",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

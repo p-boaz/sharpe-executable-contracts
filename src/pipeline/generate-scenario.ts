@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { callOpenAIJson } from "../llm/openai-json.js";
+import { loadPrompt } from "../util/load-prompt.js";
 import { executeContract } from "../core/executor.js";
 import type { ContractIR } from "../types/ir.js";
 import type { Scenario } from "../types/scenario.js";
@@ -23,11 +24,10 @@ export interface GenerateAllScenariosOptions {
   contractText: string;
 }
 
-// Upper bound on contract-text chars included in the LLM user prompt.
-// gpt-5-mini has a 128K-token context window; at ~4 chars/token we can
-// safely carry ~80KB of contract while leaving room for the IR JSON,
-// binding guidance, repair section, and the output itself. Most contracts
-// in the repo are smaller than this cap and will not be truncated at all.
+// gpt-5.4 has a 1,050,000-token context window; at ~4 chars/token we can
+// comfortably fit even the largest held-out contracts without chunking.
+// NOTE: the 80K char cap is kept for cost/latency reasons; Task 3 prompt
+// author may raise or remove it after evaluating gpt-5.4's behavior.
 const SCENARIO_CONTRACT_PROMPT_CHAR_LIMIT = 80000;
 const MAX_SCENARIO_ATTEMPTS = 3;
 
@@ -209,8 +209,7 @@ export interface ScenarioPromptInputs {
   lastFailure: string | null;
 }
 
-export const SCENARIO_SYSTEM_PROMPT =
-  "Generate one concrete execution scenario from contract markdown and extracted IR. Return strict JSON only. The scenario must be human-inspectable, include explicit assumptions, and satisfy every requirement listed in the user prompt. Always include a `summary` field: one to three plain-English sentences describing what this scenario exercises (the shape of the timeline and the outcome it probes), scaled to scenario complexity, written for a UI reader who hasn't read the contract. When the user prompt provides modeled obligation clause ids, bind performing events to the right id by setting event.metadata.clauseId to the exact id string; the downstream executor uses this as its primary match rule.";
+export const SCENARIO_SYSTEM_PROMPT = loadPrompt("prompts/scenario-generation.md");
 
 export function buildScenarioUserPrompt(inputs: ScenarioPromptInputs): string {
   const {

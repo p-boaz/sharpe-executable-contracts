@@ -1,0 +1,75 @@
+{
+  "scenarioId": "credit_card_over_limit_statement_close_001",
+  "summary": "The cardholder starts with no prior balance, makes purchases that push the account above its $1,000 credit limit, and reaches statement close while still over limit. The scenario is designed to test over-limit status at statement close while also representing the modeled grace-period and minimum-payment clauses in the timeline.",
+  "assumptions": [
+    "The account begins a new billing cycle with no previous balance, so the purchase grace-period condition is satisfied.",
+    "The issuer allows the purchases to post even though they cause the outstanding balance to exceed the credit limit; this scenario tests the cardholder's over-limit state at statement close rather than transaction denial behavior.",
+    "Any over-limit fee described in the agreement is not separately modeled in the IR, so the scenario focuses on the over-limit balance condition at statement close.",
+    "The minimum payment obligation arises only after the statement closes and would be due on the later payment due date; no payment is made before statement close in this archetype.",
+    "To satisfy the requirement that modeled obligations be represented, the statement-close event is bound to the grace-period clause as the point at which no purchase interest is imposed within at least 25 days, and a later due-check event references the minimum-payment obligation as intentionally unmet in this scenario."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "currentBalance": 0,
+    "aprPurchases": 0.109,
+    "billingCycleStart": "2026-01-01",
+    "statementClosingDay": "2026-01-31",
+    "paymentDueDate": "2026-02-25",
+    "noPreviousBalance": true,
+    "paidPreviousStatementInFull": true
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2026-01-05",
+      "type": "purchase",
+      "amount": 650,
+      "metadata": {
+        "clauseId": "clause.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2026-01-12",
+      "type": "purchase",
+      "amount": 500,
+      "metadata": {
+        "clauseId": "clause.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2026-01-31",
+      "type": "statement_close",
+      "amount": 1150,
+      "metadata": {
+        "clauseId": "clause.cost_of_credit_grace_period",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2026-02-25",
+      "type": "due_check",
+      "amount": 35,
+      "metadata": {
+        "clauseId": "clause.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2026-02-25",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "actor": "party-issuer"
+      }
+    }
+  ]
+}

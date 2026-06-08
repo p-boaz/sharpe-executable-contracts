@@ -1,0 +1,59 @@
+{
+  "scenarioId": "scenario-on-time-full-payment-001",
+  "summary": "A single purchase is made during the billing cycle, the statement closes with a balance well below the credit limit, and the cardholder pays the full statement balance before the due date. This scenario tests an on-time full-payment path where the minimum payment obligation is satisfied and neither a late fee nor an over-limit fee should be triggered.",
+  "assumptions": [
+    "The account has no previous balance at the start of the billing cycle.",
+    "The cardholder's disclosed credit limit is $1000.00.",
+    "Only one purchase posts during the cycle and no cash advances, returned payments, interest charges, or other fees are incurred in this scenario.",
+    "The periodic statement generated on the statement close date shows a New Balance of $200.00 and a minimum payment of $15.00, consistent with the contract's minimum payment formula.",
+    "The payment is received and credited on the same date it is made, and that date is on or before the due date.",
+    "Because the statement balance is below the credit limit on the statement date, no over-limit fee is assessed.",
+    "Because the full statement balance is paid on or before the due date, the minimum payment obligation is satisfied and no late fee is assessed.",
+    "The purchase event is used to evidence compliance with the cardholder's obligation not to exceed the credit limit by keeping the resulting outstanding balance below the credit limit."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "statementBalance": 0,
+    "minimumPaymentDue": 15,
+    "dueDate": "2025-05-25"
+  },
+  "events": [
+    {
+      "id": "evt-1",
+      "date": "2025-05-01",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-2",
+      "date": "2025-05-01",
+      "type": "statement_close",
+      "amount": 200,
+      "metadata": {}
+    },
+    {
+      "id": "evt-3",
+      "date": "2025-05-20",
+      "type": "payment",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-4",
+      "date": "2025-05-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {}
+    }
+  ]
+}

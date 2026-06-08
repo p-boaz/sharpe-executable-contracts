@@ -1,0 +1,90 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A cardholder makes purchases within the credit limit, receives a monthly statement, and then posts a payment after the due date that is less than the required minimum. The scenario is designed to exercise the late-payment path where the minimum-payment obligation is not timely satisfied even though a partial payment eventually arrives.",
+  "assumptions": [
+    "The billing cycle closes on 2025-05-31 and the periodic statement sets a payment due date of 2025-06-25.",
+    "The statement new balance is $500.00, so the minimum payment under the contract formula is max(3% of $500.00, $15.00) = $15.00.",
+    "A single late payment of $10.00 is posted on 2025-06-28, which is both after the due date and below the required minimum.",
+    "The purchase activity stays within the assigned credit limit, so the credit-limit obligation is treated as performed rather than breached.",
+    "A due_check event on the due date evaluates whether the minimum payment obligation was satisfied by that date; because no qualifying payment of at least $15.00 was posted by 2025-06-25, the obligation remains unmet in this archetype."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "cycleStart": "2025-05-01",
+    "cycleEnd": "2025-05-31",
+    "dueDate": "2025-06-25",
+    "aprPurchases": 0.079,
+    "newBalanceAtStart": 0,
+    "minimumPaymentDue": 15
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-05-10",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-05-20",
+      "type": "purchase",
+      "amount": 300,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-05-31",
+      "type": "statement_close",
+      "amount": 500,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder",
+        "statementNewBalance": 500,
+        "minimumPaymentShown": 15
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-06-25",
+      "type": "due_check",
+      "amount": 15,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder",
+        "requiredByDueDate": 15,
+        "paidByDueDate": 0
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-06-26",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-credit_union",
+        "noticeType": "late_payment_fee_may_be_added",
+        "reason": "payment not made on time and minimum payment obligation unmet as of due date"
+      }
+    },
+    {
+      "id": "evt-006",
+      "date": "2025-06-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

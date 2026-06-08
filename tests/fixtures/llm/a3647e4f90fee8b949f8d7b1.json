@@ -1,0 +1,83 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A cardholder makes purchases within the credit limit, receives a statement, and then submits a payment after the due date for less than the required minimum. This scenario exercises the late-payment/default path while still including an event tied to the credit-limit obligation to show that the balance stayed within the approved limit.",
+  "assumptions": [
+    "The billing cycle closes on 2025-03-31 and the statement sets a payment due date of 2025-04-25.",
+    "The statement's new balance is $500.00, so the contractual minimum payment is 3% of $500.00 = $15.00, because that is greater than $15.00 only by equality and the formula yields a minimum due of $15.00.",
+    "The account credit limit is $1,000.00, and the purchases in this scenario do not cause the balance to exceed that limit.",
+    "A payment of $10.00 received on 2025-04-28 is posted after the due date and is below the required minimum payment, so the minimum payment obligation is treated as unmet for the statement period.",
+    "Because the user required modeled obligation clause ids to appear on performing events, the purchase events are tagged to clause.4.credit_limits to evidence performance of the promise not to exceed the credit limit; the late, insufficient payment event is tagged to clause.5.minimum_payment_obligation even though it does not satisfy that obligation in substance."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "aprPurchases": 0.109,
+    "statementBalance": 500,
+    "newBalance": 500,
+    "minimumPaymentDue": 15,
+    "dueDate": "2025-04-25",
+    "billingCycleStart": "2025-03-01",
+    "billingCycleEnd": "2025-03-31"
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-03-05",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-03-12",
+      "type": "purchase",
+      "amount": 300,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 500,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 15,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-04-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-006",
+      "date": "2025-04-28",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    }
+  ]
+}

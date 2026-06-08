@@ -1,0 +1,76 @@
+{
+  "scenarioId": "scenario-over-limit-statement-close-001",
+  "summary": "The cardholder starts a billing cycle with no balance and makes purchases that push the account above its $500 credit limit before the statement closes. The statement closes while the balance is over limit, and the cardholder then makes the required minimum payment by the due date, showing over-limit behavior at statement close without a payment default.",
+  "assumptions": [
+    "The account is open, the card has already been issued, and the cardholder is authorized to use it throughout the scenario.",
+    "The billing cycle runs from 2025-01-01 through 2025-01-31, with the payment due date on 2025-02-25.",
+    "No prior balance, interest, credits, or fees exist at the start of the cycle, so the new balance at statement close is driven only by the listed purchases.",
+    "The issuer permits the over-limit purchases to post rather than declining them, even though clause.4.credit_limits obligates the cardholder not to exceed the limit.",
+    "For archetype coverage, clause.4.credit_limits is referenced by the over-limit purchase events even though the obligation is breached rather than satisfied by those events.",
+    "For archetype coverage, clause.5.minimum_payment_obligation is performed by the post-statement payment event tied to the statement's minimum payment.",
+    "The minimum payment on a $560 statement balance is assumed to be 3% of the new balance, or $16.80, because that exceeds $15.00."
+  ],
+  "initialState": {
+    "contractId": "WesTex-VISA-credit-card-agreement",
+    "currency": "USD",
+    "accountId": "acct-001",
+    "cardholderId": "party-cardholder",
+    "issuerId": "party-credit_union",
+    "creditLimit": 500,
+    "openingBalance": 0,
+    "statementCycleStart": "2025-01-01",
+    "statementCycleEnd": "2025-01-31",
+    "paymentDueDate": "2025-02-25"
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-01-05",
+      "type": "purchase",
+      "amount": 220,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-01-12",
+      "type": "purchase",
+      "amount": 180,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-01-24",
+      "type": "purchase",
+      "amount": 160,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-01-31",
+      "type": "statement_close",
+      "amount": 560,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-02-25",
+      "type": "payment",
+      "amount": 16.8,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

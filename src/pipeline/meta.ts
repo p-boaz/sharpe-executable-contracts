@@ -61,9 +61,13 @@ function slugifyContractKey(value: string): string {
 }
 
 export function contractIdFor(ir: ContractIR, contractPath: string): string {
-  const fromIr = slugifyContractKey(ir.contractId);
-  if (fromIr) return fromIr;
-  return slugifyContractKey(basename(contractPath));
+  // Prefer the filename slug so the on-disk layout and expectations/*.yaml
+  // contractId stay deterministic. The LLM occasionally picks up stray
+  // tokens from the source (contract numbers, revision codes, dates) and
+  // that breaks directory/expectation matching.
+  const fromFile = slugifyContractKey(basename(contractPath));
+  if (fromFile) return fromFile;
+  return slugifyContractKey(ir.contractId);
 }
 
 function scenarioStageStatus(scenario: Scenario): StageLlmStatus {
@@ -86,7 +90,7 @@ export interface BuildMetaInput {
   family?: ContractFamily;
   runs?: ScenarioRun[];
   english?: string;
-  // Prior meta to merge stage timestamps from (web flow: IR step, then scenarios).
+  // Prior meta to merge stage timestamps from (used when re-running a single stage over cached artifacts).
   existingMeta?: Partial<ContractMeta>;
   // Stage timestamp to stamp onto this call. Caller picks which key.
   stageTimestamp?: {

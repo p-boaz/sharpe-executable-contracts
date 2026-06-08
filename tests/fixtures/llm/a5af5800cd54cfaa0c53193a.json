@@ -1,0 +1,77 @@
+{
+  "scenarioId": "credit-card-on-time-full-payment-001",
+  "summary": "A cardholder makes a modest purchase during the billing cycle, receives a statement, and then pays the full statement balance before the due date. The scenario tests that the account stays within the credit limit, the minimum-payment obligation is satisfied on time, the purchase enjoys the grace period, and no late or over-limit fee should be triggered.",
+  "assumptions": [
+    "The account has no previous balance at the start of the billing cycle, so the purchase qualifies for the contract's purchase grace-period condition.",
+    "The credit limit is $1000.00, and the single purchase in this scenario does not exceed that limit.",
+    "The statement's New Balance is $200.00, making the minimum payment $15.00 under the contract formula (3% of $200.00 is $6.00, so the greater of 3% or $15.00 is $15.00).",
+    "The payment is made by an approved standard method and is credited on the date received.",
+    "No cash advance, foreign transaction, returned payment, disputed charge, illegal use, or other fee-triggering event occurs in this scenario.",
+    "To satisfy the executor's obligation binding requirements, the purchase event is explicitly bound to the credit-limit obligation, the payment event is explicitly bound to the minimum-payment obligation, and a notice event is used to represent the issuer providing the contractual grace period for the purchase cycle."
+  ],
+  "initialState": {
+    "contractHash": "55732a737a89c1769e1eef1c87b1757a38cf40e050b74d751d5d1db833d0d28c",
+    "accountId": "acct-001",
+    "cardholderId": "party-cardholder",
+    "issuerId": "party-issuer",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "aprNominal": 0.089,
+    "cycleStart": "2025-01-01",
+    "cycleEnd": "2025-01-31",
+    "dueDate": "2025-02-25",
+    "statementNewBalance": 200,
+    "statementMinimumPayment": 15
+  },
+  "events": [
+    {
+      "id": "evt-001-purchase",
+      "date": "2025-01-10",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002-statement-close",
+      "date": "2025-01-31",
+      "type": "statement_close",
+      "amount": 200,
+      "metadata": {
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-003-grace-period-notice",
+      "date": "2025-01-31",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause-6-grace-period",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-004-payment",
+      "date": "2025-02-20",
+      "type": "payment",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-005-due-check",
+      "date": "2025-02-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "actor": "party-issuer"
+      }
+    }
+  ]
+}

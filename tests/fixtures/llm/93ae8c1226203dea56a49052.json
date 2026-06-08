@@ -1,0 +1,73 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A cardholder makes purchases within the credit limit, receives a monthly statement, and then makes a payment after the due date that is smaller than the required minimum. The scenario is designed to exercise the late-payment path where the minimum payment obligation is not satisfied on time despite a partial payment being posted later.",
+  "assumptions": [
+    "The billing cycle closes on 2025-03-31 and produces a periodic statement with a New Balance of 600.00 USD.",
+    "Under clause.5.minimum_payment_formula, the minimum payment on a 600.00 USD New Balance is 18.00 USD (3% of 600.00), which is greater than 15.00 USD.",
+    "The payment due date shown on the statement is 2025-04-25.",
+    "No prior unpaid fees, returned payments, disputes, or skip-payment arrangements affect this cycle.",
+    "The purchase in this scenario remains within the 1000.00 USD credit limit, so the credit-limit obligation is treated as met.",
+    "A payment event is still included with clause.5.minimum_payment_obligation even though it is late and below the required minimum; this is intentional so the executor can evaluate that the obligation was attempted but remains unmet for this archetype."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "openingBalance": 0,
+    "statementBalance": 0,
+    "newBalance": 600,
+    "minimumPaymentDue": 18,
+    "dueDate": "2025-04-25",
+    "billingCycleStart": "2025-03-01",
+    "billingCycleEnd": "2025-03-31"
+  },
+  "events": [
+    {
+      "id": "evt-1",
+      "date": "2025-03-10",
+      "type": "purchase",
+      "amount": 600,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-2",
+      "date": "2025-03-31",
+      "type": "statement_close",
+      "amount": 600,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-3",
+      "date": "2025-04-25",
+      "type": "due_check",
+      "amount": 18,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-4",
+      "date": "2025-04-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-5",
+      "date": "2025-04-29",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    }
+  ]
+}

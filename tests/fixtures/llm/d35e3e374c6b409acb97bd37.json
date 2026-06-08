@@ -1,0 +1,63 @@
+{
+  "scenarioId": "scenario-over-limit-statement-close-001",
+  "summary": "The cardholder starts with no balance, makes purchases that push the account above a $500 credit limit, and reaches statement close while still over limit. A later payment by the due date satisfies the modeled minimum-payment obligation, while the over-limit condition demonstrates breach of the credit-limit promise at statement close.",
+  "assumptions": [
+    "The account begins the cycle with a $0.00 previous balance and an active card.",
+    "The credit limit for this scenario is $500.00.",
+    "All purchases are authorized card purchases by the cardholder and post in the same billing cycle.",
+    "No fees or interest are separately modeled before statement close in this scenario; the over-limit behavior is probed by having the posted purchase balance alone exceed the credit limit.",
+    "The statement generated at statement close reflects a new balance of $560.00, so the contractual minimum payment formula yields $16.80 (3% of $560.00, which is greater than $15.00).",
+    "Although clause.4.credit_limits is a promise not to exceed the limit rather than a performable payment, a purchase event is explicitly bound to that clause so the executor can attach the modeled obligation within this archetype."
+  ],
+  "initialState": {
+    "contractId": "westex-visa-credit-card-agreement",
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 500,
+    "previousBalance": 0,
+    "statementCycleStart": "2026-01-01",
+    "statementCycleEnd": "2026-01-31",
+    "paymentDueDate": "2026-02-25"
+  },
+  "events": [
+    {
+      "id": "evt-1",
+      "date": "2026-01-05",
+      "type": "purchase",
+      "amount": 300,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-2",
+      "date": "2026-01-18",
+      "type": "purchase",
+      "amount": 260,
+      "metadata": {
+        "clauseId": "clause.4.credit_limits",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-3",
+      "date": "2026-01-31",
+      "type": "statement_close",
+      "amount": 560,
+      "metadata": {
+        "actor": "party-credit_union"
+      }
+    },
+    {
+      "id": "evt-4",
+      "date": "2026-02-25",
+      "type": "payment",
+      "amount": 16.8,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

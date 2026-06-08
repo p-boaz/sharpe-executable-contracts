@@ -1,0 +1,64 @@
+{
+  "scenarioId": "westex-visa-over-limit-statement-close-001",
+  "summary": "The cardholder starts a billing cycle with no previous balance, makes purchases that push the account above the credit limit, and reaches statement close while still over limit. The scenario is designed to probe over-limit behavior at statement close while also including the modeled payment and grace-period obligations for later in the timeline.",
+  "assumptions": [
+    "The account has no previous balance at the start of the billing cycle, so the purchase grace-period condition is satisfied.",
+    "All purchases are authorized and posted successfully during the cycle even though they collectively exceed the disclosed credit limit; this scenario focuses on the contractual promise not to exceed the limit and the over-limit state at statement close.",
+    "No payments are made before the statement closes, so the statement new balance remains above the credit limit on the statement date.",
+    "The issuer provides at least 25 days between statement close and payment due date, satisfying the modeled grace-period obligation.",
+    "Because this archetype centers on the over-limit condition at statement close, the minimum payment obligation is included as a later payment event after statement issuance rather than as part of the over-limit trigger itself.",
+    "Interest and any over-limit fee calculation are not separately modeled as performing events here; the scenario only ensures the over-limit condition exists at statement close."
+  ],
+  "initialState": {
+    "contractId": "westex-visa-credit-card-agreement",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "accountBalance": 0,
+    "billingCycleStart": "2026-01-01",
+    "statementCloseDate": "2026-01-31",
+    "paymentDueDate": "2026-02-25"
+  },
+  "events": [
+    {
+      "id": "e1",
+      "date": "2026-01-05",
+      "type": "purchase",
+      "amount": 600,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "e2",
+      "date": "2026-01-18",
+      "type": "purchase",
+      "amount": 500,
+      "metadata": {
+        "clauseId": "clause.4.credit_limit_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "e3",
+      "date": "2026-01-31",
+      "type": "statement_close",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause.6.grace_period_obligation",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "e4",
+      "date": "2026-02-25",
+      "type": "payment",
+      "amount": 33,
+      "metadata": {
+        "clauseId": "clause.5.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    }
+  ]
+}

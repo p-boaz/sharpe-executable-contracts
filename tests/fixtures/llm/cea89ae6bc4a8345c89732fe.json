@@ -1,0 +1,80 @@
+{
+  "scenarioId": "westex_cc_on_time_full_payment_001",
+  "summary": "A cardholder makes a small purchase early in the billing cycle, stays under the credit limit, receives a statement, and then pays the full statement balance before the due date. The scenario exercises an on-time payment path where the minimum payment obligation is satisfied, the purchase grace period is preserved, and no late or over-limit fee should apply.",
+  "assumptions": [
+    "The account has no previous balance at the start of this billing cycle, so the purchase qualifies for the grace-period condition in clause 6.",
+    "The credit limit is $1000.00, and the single purchase in this scenario does not exceed that limit at any time.",
+    "The periodic statement closes on 2025-05-31 and sets a payment due date of 2025-06-25, which provides at least 25 days after statement closing.",
+    "The statement's New Balance is $200.00 and the minimum payment computed under the contract formula would be $15.00, but the cardholder elects to pay the full New Balance.",
+    "No cash advances, returned payments, foreign transactions, disputed charges, or extra fees occur in this scenario.",
+    "The issuer's grace-period obligation is represented by the statement/due-date timeline and by the absence of any interest charge before the due date; no separate interest-charge event is modeled because this archetype tests successful grace-period treatment."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "statementBalance": 0,
+    "dueDate": "2025-06-25",
+    "aprPurchases": 0.079,
+    "cycleStart": "2025-05-01",
+    "cycleEnd": "2025-05-31"
+  },
+  "events": [
+    {
+      "id": "evt-001-purchase",
+      "date": "2025-05-10",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause-4-credit-limit-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002-statement-close",
+      "date": "2025-05-31",
+      "type": "statement_close",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause-6-grace-period",
+        "actor": "party-issuer",
+        "newBalance": 200,
+        "minimumPayment": 15,
+        "graceDays": 25
+      }
+    },
+    {
+      "id": "evt-003-payment",
+      "date": "2025-06-20",
+      "type": "payment",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-004-due-check",
+      "date": "2025-06-25",
+      "type": "due_check",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause-5-minimum-payment-obligation",
+        "actor": "party-cardholder",
+        "result": "paid_in_full_on_time"
+      }
+    },
+    {
+      "id": "evt-005-notice",
+      "date": "2025-06-25",
+      "type": "notice",
+      "amount": 0,
+      "metadata": {
+        "clauseId": "clause-6-grace-period",
+        "actor": "party-issuer",
+        "result": "no_interest_no_late_fee_no_over_limit_fee"
+      }
+    }
+  ]
+}

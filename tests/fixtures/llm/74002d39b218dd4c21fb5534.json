@@ -1,0 +1,87 @@
+{
+  "scenarioId": "late-payment-below-minimum-001",
+  "summary": "A cardholder makes ordinary purchases within the credit limit, receives a monthly statement, and then makes a payment after the due date that is less than the required minimum. The timeline is designed to probe the late-payment path: the minimum payment obligation is not satisfied on time, the issuer's grace-period obligation is represented at statement time, and the account remains delinquent after the due-date check.",
+  "assumptions": [
+    "The billing cycle closes on 2025-05-31 and the statement sets a payment due date of 2025-06-25, which is at least 25 days later and therefore satisfies the issuer's grace-period obligation for purchases.",
+    "The statement new balance is $500.00, so the contractual minimum payment is 3% of $500.00 = $15.00, because that is greater than $15 only by equality and the minimum is therefore $15.00.",
+    "The cardholder makes a single late payment of $10.00 on 2025-06-28, which is after the due date and below the required minimum payment, so the minimum payment obligation is treated as unmet for the cycle.",
+    "All card use in this scenario stays within the $1,000.00 credit limit, so the credit-limit obligation is performed rather than breached.",
+    "No prior statement balance remains unpaid before this cycle, so the issuer's 25-day grace-period treatment for purchases is assumed to apply to this statement cycle.",
+    "No returned payment, dispute, acceleration election, or over-limit fee is modeled in this scenario; the focus is only the late-and-below-minimum payment path."
+  ],
+  "initialState": {
+    "accountId": "acct-001",
+    "currency": "USD",
+    "creditLimit": 1000,
+    "previousBalance": 0,
+    "apr": 0.109,
+    "cycleStart": "2025-05-01",
+    "cycleEnd": "2025-05-31",
+    "dueDate": "2025-06-25",
+    "newBalance": 500,
+    "minimumPaymentDue": 15,
+    "gracePeriodDays": 25,
+    "status": "open"
+  },
+  "events": [
+    {
+      "id": "evt-001",
+      "date": "2025-05-05",
+      "type": "purchase",
+      "amount": 200,
+      "metadata": {
+        "clauseId": "clause.credit_limit_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-002",
+      "date": "2025-05-18",
+      "type": "purchase",
+      "amount": 300,
+      "metadata": {
+        "clauseId": "clause.credit_limit_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-003",
+      "date": "2025-05-31",
+      "type": "statement_close",
+      "amount": 500,
+      "metadata": {
+        "clauseId": "clause.grace_period_obligation",
+        "actor": "party-issuer"
+      }
+    },
+    {
+      "id": "evt-004",
+      "date": "2025-06-25",
+      "type": "due_check",
+      "amount": 15,
+      "metadata": {
+        "clauseId": "clause.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-005",
+      "date": "2025-06-28",
+      "type": "payment",
+      "amount": 10,
+      "metadata": {
+        "clauseId": "clause.minimum_payment_obligation",
+        "actor": "party-cardholder"
+      }
+    },
+    {
+      "id": "evt-006",
+      "date": "2025-06-28",
+      "type": "notice",
+      "amount": 25,
+      "metadata": {
+        "actor": "party-issuer"
+      }
+    }
+  ]
+}
